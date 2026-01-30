@@ -4,12 +4,14 @@
 #include <QString>
 #include <QStringList>
 #include <QList>
+#include <QMap>
 #include <QJsonObject>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QFile>
 #include <QDir>
 #include <QStandardPaths>
+#include "seriesstyledialog.h"
 
 /**
  * @brief 脚本预设结构
@@ -45,6 +47,7 @@ struct PlotPreset
     QString xAxisColumn;            // X轴列名（空表示使用行索引）
     QStringList yAxisColumns;       // Y轴列名列表
     QStringList computedColumns;    // 选中的计算列列表
+    QMap<QString, SeriesStyle> seriesStyles;  // 曲线样式设置
     
     QJsonObject toJson() const {
         QJsonObject obj;
@@ -52,6 +55,14 @@ struct PlotPreset
         obj["xAxisColumn"] = xAxisColumn;
         obj["yAxisColumns"] = QJsonArray::fromStringList(yAxisColumns);
         obj["computedColumns"] = QJsonArray::fromStringList(computedColumns);
+        
+        // 保存曲线样式
+        QJsonObject stylesObj;
+        for (auto it = seriesStyles.constBegin(); it != seriesStyles.constEnd(); ++it) {
+            stylesObj[it.key()] = it.value().toJson();
+        }
+        obj["seriesStyles"] = stylesObj;
+        
         return obj;
     }
     
@@ -67,6 +78,13 @@ struct PlotPreset
         for (const auto &val : compArr) {
             preset.computedColumns.append(val.toString());
         }
+        
+        // 加载曲线样式
+        QJsonObject stylesObj = obj["seriesStyles"].toObject();
+        for (auto it = stylesObj.constBegin(); it != stylesObj.constEnd(); ++it) {
+            preset.seriesStyles[it.key()] = SeriesStyle::fromJson(it.value().toObject());
+        }
+        
         return preset;
     }
 };

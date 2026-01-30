@@ -39,6 +39,12 @@ CanvasPanel::CanvasPanel(CsvParser *parser, ScriptEngine *scriptEngine, QWidget 
     m_columnListWidget->setSelectionMode(QAbstractItemView::NoSelection);
     connect(m_columnListWidget, &QListWidget::itemClicked,
             this, &CanvasPanel::onColumnItemClicked);
+    
+    // 右键菜单
+    m_columnListWidget->setContextMenuPolicy(Qt::CustomContextMenu);
+    connect(m_columnListWidget, &QWidget::customContextMenuRequested,
+            this, &CanvasPanel::showColumnContextMenu);
+    
     m_columnLayout->addWidget(m_columnListWidget, 1);
     
     // 清除按钮
@@ -68,13 +74,22 @@ void CanvasPanel::refreshColumnList()
     // 暂时断开信号，避免在更新过程中触发
     m_xAxisComboBox->blockSignals(true);
     
+    // 保存当前选中状态
+    QSet<int> previousSelectedColumns = m_selectedColumns;
+    QSet<QString> previousSelectedComputedColumns = m_selectedComputedColumns;
+    
+    // 保存当前X轴选择
+    QVariant currentXAxisData = m_xAxisComboBox->currentData();
+    
     m_columnListWidget->clear();
     m_xAxisComboBox->clear();
     m_xAxisComboBox->addItem("行索引", -1);
     m_columnIndexMap.clear();
-    m_selectedColumns.clear();
-    m_selectedComputedColumns.clear();
-    m_chart->clearChart();
+    
+    // 不再清除选中状态和图表
+    // m_selectedColumns.clear();
+    // m_selectedComputedColumns.clear();
+    // m_chart->clearChart();
     
     if (!m_csvParser || m_csvParser->getColumnCount() == 0) {
         m_xAxisComboBox->blockSignals(false);
@@ -100,7 +115,12 @@ void CanvasPanel::refreshColumnList()
             item->setFlags(item->flags() & ~Qt::ItemIsEnabled);
         } else {
             item->setToolTip("点击添加到图表 / 再次点击移除");
-            item->setCheckState(Qt::Unchecked);
+            // 恢复之前的选中状态
+            if (previousSelectedColumns.contains(i)) {
+                item->setCheckState(Qt::Checked);
+            } else {
+                item->setCheckState(Qt::Unchecked);
+            }
         }
         m_columnListWidget->addItem(item);
         
@@ -117,7 +137,12 @@ void CanvasPanel::refreshColumnList()
         item->setData(Qt::UserRole + 1, true);  // 标记为计算列
         item->setData(Qt::UserRole + 2, it.key());  // 存储计算列名称
         item->setToolTip("计算列: " + it.key() + " (点击添加/移除)");
-        item->setCheckState(Qt::Unchecked);
+        // 恢复之前的选中状态
+        if (previousSelectedComputedColumns.contains(it.key())) {
+            item->setCheckState(Qt::Checked);
+        } else {
+            item->setCheckState(Qt::Unchecked);
+        }
         item->setForeground(QColor(0, 128, 0));  // 绿色显示计算列
         m_columnListWidget->addItem(item);
         
@@ -125,11 +150,22 @@ void CanvasPanel::refreshColumnList()
         m_xAxisComboBox->addItem("📊 " + it.key(), QVariant::fromValue(QString("computed:" + it.key())));
     }
     
+    // 恢复X轴选择
+    int xAxisIndex = m_xAxisComboBox->findData(currentXAxisData);
+    if (xAxisIndex >= 0) {
+        m_xAxisComboBox->setCurrentIndex(xAxisIndex);
+    }
+    
     // 恢复信号
     m_xAxisComboBox->blockSignals(false);
     
     // 更新Y轴列表的可选状态
     updateYAxisAvailability();
+    
+    // 如果有选中的列，重新绘制图表
+    if (!m_selectedColumns.isEmpty() || !m_selectedComputedColumns.isEmpty()) {
+        updateChart();
+    }
 }
 
 void CanvasPanel::clearChart()
@@ -229,7 +265,10 @@ void CanvasPanel::updateChart()
         }
         
         QVector<double> yData = m_csvParser->getColumnData(colIndex);
-        m_chart->addSeries(colName, xData, yData);
+        
+        // 获取该列的样式设置
+        SeriesStyle style = m_seriesStyles.value(colName, SeriesStyle());
+        m_chart->addSeries(colName, xData, yData, QColor(), style);
     }
     
     // 添加选中的计算列
@@ -251,7 +290,10 @@ void CanvasPanel::updateChart()
                     computedXData.append(static_cast<double>(i));
                 }
             }
-            m_chart->addSeries(computedName, computedXData, yData);
+            
+            // 获取该计算列的样式设置
+            SeriesStyle style = m_seriesStyles.value(computedName, SeriesStyle());
+            m_chart->addSeries(computedName, computedXData, yData, QColor(), style);
         }
     }
     
@@ -414,6 +456,9 @@ PlotPreset CanvasPanel::getPreset() const
         preset.computedColumns.append(colName);
     }
     
+    // 保存曲线样式
+    preset.seriesStyles = m_seriesStyles;
+    
     return preset;
 }
 
@@ -472,6 +517,29 @@ void CanvasPanel::applyPreset(const PlotPreset &preset)
         }
     }
     
+    // 恢复曲线样式
+    m_seriesStyles = preset.seriesStyles;
+    
+    // 更新列表项的样式指示器
+    for (int i = 0; i < m_columnListWidget->count(); ++i) {
+        QListWidgetItem *item = m_columnListWidget->item(i);
+        bool isComputed = item->data(Qt::UserRole + 1).toBool();
+        QString columnName;
+        
+        if (isComputed) {
+            columnName = item->data(Qt::UserRole + 2).toString();
+        } else {
+            int colIndex = item->data(Qt::UserRole).toInt();
+            if (m_csvParser && colIndex >= 0 && colIndex < m_csvParser->getColumnNames().size()) {
+                columnName = m_csvParser->getColumnNames()[colIndex];
+            }
+        }
+        
+        if (!columnName.isEmpty()) {
+            updateItemStyleIndicator(item, m_seriesStyles.contains(columnName));
+        }
+    }
+    
     // 更新图表
     updateChart();
 }
@@ -496,4 +564,119 @@ void CanvasPanel::clearComputedColumns()
     m_computedColumns.clear();
     m_selectedComputedColumns.clear();
     // UI更新由 refreshColumnList() 统一处理
+}
+
+void CanvasPanel::showColumnContextMenu(const QPoint &pos)
+{
+    QListWidgetItem *item = m_columnListWidget->itemAt(pos);
+    if (!item) {
+        return;
+    }
+    
+    // 检查是否是可用的列
+    if (!(item->flags() & Qt::ItemIsEnabled)) {
+        return;
+    }
+    
+    bool isComputed = item->data(Qt::UserRole + 1).toBool();
+    QString columnName;
+    
+    if (isComputed) {
+        columnName = item->data(Qt::UserRole + 2).toString();
+    } else {
+        int columnIndex = item->data(Qt::UserRole).toInt();
+        QStringList columnNames = m_csvParser->getColumnNames();
+        if (columnIndex >= 0 && columnIndex < columnNames.size()) {
+            columnName = columnNames[columnIndex];
+        }
+    }
+    
+    if (columnName.isEmpty()) {
+        return;
+    }
+    
+    // 创建右键菜单
+    QMenu menu(this);
+    
+    // 曲线样式设置
+    QAction *styleAction = menu.addAction("设置曲线样式...");
+    connect(styleAction, &QAction::triggered, [this, columnName, item]() {
+        // 获取当前样式
+        SeriesStyle currentStyle = m_seriesStyles.value(columnName, SeriesStyle());
+        
+        // 打开设置对话框
+        SeriesStyleDialog dialog(columnName, currentStyle, this);
+        if (dialog.exec() == QDialog::Accepted) {
+            SeriesStyle newStyle = dialog.getStyle();
+            
+            // 保存样式
+            if (newStyle.isDefault()) {
+                m_seriesStyles.remove(columnName);  // 默认样式不需要保存
+            } else {
+                m_seriesStyles[columnName] = newStyle;
+            }
+            
+            // 更新列表项显示（添加样式标记）
+            updateItemStyleIndicator(item, !newStyle.isDefault());
+            
+            // 如果该列已选中，重新绘制图表
+            bool isComputed = item->data(Qt::UserRole + 1).toBool();
+            bool isSelected = false;
+            if (isComputed) {
+                isSelected = m_selectedComputedColumns.contains(columnName);
+            } else {
+                int colIndex = item->data(Qt::UserRole).toInt();
+                isSelected = m_selectedColumns.contains(colIndex);
+            }
+            
+            if (isSelected) {
+                updateChart();
+            }
+        }
+    });
+    
+    menu.addSeparator();
+    
+    // 清除样式
+    QAction *clearStyleAction = menu.addAction("清除样式设置");
+    clearStyleAction->setEnabled(m_seriesStyles.contains(columnName));
+    connect(clearStyleAction, &QAction::triggered, [this, columnName, item]() {
+        m_seriesStyles.remove(columnName);
+        updateItemStyleIndicator(item, false);
+        
+        // 如果该列已选中，重新绘制图表
+        bool isComputed = item->data(Qt::UserRole + 1).toBool();
+        bool isSelected = false;
+        if (isComputed) {
+            isSelected = m_selectedComputedColumns.contains(columnName);
+        } else {
+            int colIndex = item->data(Qt::UserRole).toInt();
+            isSelected = m_selectedColumns.contains(colIndex);
+        }
+        
+        if (isSelected) {
+            updateChart();
+        }
+    });
+    
+    menu.exec(m_columnListWidget->mapToGlobal(pos));
+}
+
+void CanvasPanel::updateItemStyleIndicator(QListWidgetItem *item, bool hasStyle)
+{
+    if (!item) return;
+    
+    QString text = item->text();
+    
+    // 移除已有的样式标记
+    if (text.endsWith(" ⚙")) {
+        text = text.left(text.length() - 2);
+    }
+    
+    // 如果有样式，添加标记
+    if (hasStyle) {
+        text += " ⚙";
+    }
+    
+    item->setText(text);
 }

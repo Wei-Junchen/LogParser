@@ -10,6 +10,8 @@
 #include <QLabel>
 #include <QGraphicsLineItem>
 #include <QGraphicsTextItem>
+#include <QCheckBox>
+#include "seriesstyledialog.h"
 
 #if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
 using namespace Qt;
@@ -19,6 +21,28 @@ QT_CHARTS_USE_NAMESPACE
 
 // 前向声明
 class InteractiveChartView;
+
+/**
+ * @brief 曲线统计标记信息
+ */
+struct SeriesMarkerInfo {
+    QString seriesName;
+    QColor color;
+    double yMin;
+    double yMax;
+    double xMin;
+    double xMax;
+    bool showYMin = false;
+    bool showYMax = false;
+    bool showXMin = false;
+    bool showXMax = false;
+    
+    // 标记线（延伸到整个图表区域）
+    QLineSeries *yMinLine = nullptr;
+    QLineSeries *yMaxLine = nullptr;
+    QLineSeries *xMinLine = nullptr;
+    QLineSeries *xMaxLine = nullptr;
+};
 
 /**
  * @brief 图表组件类
@@ -38,7 +62,8 @@ public:
     void addSeries(const QString &name, 
                    const QVector<double> &xData, 
                    const QVector<double> &yData,
-                   const QColor &color = QColor());
+                   const QColor &color = QColor(),
+                   const SeriesStyle &style = SeriesStyle());
     
     /**
      * @brief 清除所有数据线
@@ -79,11 +104,18 @@ public slots:
     void zoomIn();
     void zoomOut();
     void zoomReset();
+    
+    /**
+     * @brief 显示标记设置对话框
+     */
+    void showMarkerSettings();
 
 private:
     void setupToolbar();
     QColor getNextColor();
     void updateAxisRanges();
+    void updateMarkerLines();
+    void clearMarkerLines();
 
 private:
     QChart *m_chart;
@@ -97,12 +129,16 @@ private:
     QToolButton *m_zoomInBtn;
     QToolButton *m_zoomOutBtn;
     QToolButton *m_zoomResetBtn;
+    QToolButton *m_markerBtn;
     
     int m_seriesCount;
     
     // 原始坐标轴范围
     double m_originalXMin, m_originalXMax;
     double m_originalYMin, m_originalYMax;
+    
+    // 曲线标记信息
+    QList<SeriesMarkerInfo> m_markerInfos;
 };
 
 /**
@@ -128,8 +164,9 @@ protected:
 private:
     void updateCrosshair(const QPoint &pos);
     void hideCrosshair();
-    QString buildTooltipText(double xValue);
+    QString buildTooltipText(double xValue, double yValue);
     double interpolateY(QLineSeries *series, double xValue);
+    double interpolateYScatter(QScatterSeries *series, double xValue);
 
 private:
     QValueAxis *m_axisX;
@@ -141,6 +178,8 @@ private:
     
     // 垂直虚线
     QGraphicsLineItem *m_verticalLine;
+    // 水平虚线
+    QGraphicsLineItem *m_horizontalLine;
     // 提示框背景
     QGraphicsRectItem *m_tooltipBg;
     // 提示文字

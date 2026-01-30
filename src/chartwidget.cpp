@@ -3,6 +3,10 @@
 #include <QPen>
 #include <QBrush>
 #include <QFont>
+#include <QDialog>
+#include <QDialogButtonBox>
+#include <QScrollArea>
+#include <QGridLayout>
 #include <cmath>
 #include <limits>
 
@@ -79,6 +83,22 @@ void ChartWidget::setupToolbar()
     toolLayout->addWidget(m_zoomInBtn);
     toolLayout->addWidget(m_zoomOutBtn);
     toolLayout->addWidget(m_zoomResetBtn);
+    
+    // 分隔符
+    QFrame *separator = new QFrame();
+    separator->setFrameShape(QFrame::VLine);
+    separator->setFrameShadow(QFrame::Sunken);
+    toolLayout->addWidget(separator);
+    
+    // 标记按钮
+    m_markerBtn = new QToolButton();
+    m_markerBtn->setText("📏");
+    m_markerBtn->setToolTip("显示/隐藏曲线标记线 (Y最大/最小值, X起止值)");
+    m_markerBtn->setFixedSize(32, 28);
+    connect(m_markerBtn, &QToolButton::clicked, this, &ChartWidget::showMarkerSettings);
+    toolLayout->addWidget(new QLabel("标记:"));
+    toolLayout->addWidget(m_markerBtn);
+    
     toolLayout->addStretch();
     
     m_layout->addWidget(m_toolbar);
@@ -87,35 +107,141 @@ void ChartWidget::setupToolbar()
 void ChartWidget::addSeries(const QString &name, 
                             const QVector<double> &xData, 
                             const QVector<double> &yData,
-                            const QColor &color)
+                            const QColor &color,
+                            const SeriesStyle &style)
 {
     if (xData.isEmpty() || yData.isEmpty()) {
         return;
     }
     
-    QLineSeries *series = new QLineSeries();
-    series->setName(name);
-    
     int count = qMin(xData.size(), yData.size());
+    
+    // 根据样式过滤和准备数据
+    QVector<double> filteredX, filteredY;
     for (int i = 0; i < count; ++i) {
-        series->append(xData[i], yData[i]);
+        double y = yData[i];
+        
+        // 区间过滤
+        if (style.filterByRange) {
+            if (y < style.minValue || y > style.maxValue) {
+                continue;  // 跳过超出区间的点
+            }
+        }
+        
+        filteredX.append(xData[i]);
+        filteredY.append(y);
     }
     
-    // 设置颜色
-    if (color.isValid()) {
-        series->setColor(color);
-    } else {
-        series->setColor(getNextColor());
+    if (filteredX.isEmpty()) {
+        return;  // 过滤后没有数据
     }
     
-    // 设置线宽
-    QPen pen = series->pen();
-    pen.setWidth(2);
-    series->setPen(pen);
+    // 确定使用的颜色
+    QColor seriesColor = color.isValid() ? color : getNextColor();
     
-    m_chart->addSeries(series);
-    series->attachAxis(m_axisX);
-    series->attachAxis(m_axisY);
+    // 根据显示模式创建不同类型的Series
+    switch (style.displayMode) {
+        case SeriesDisplayMode::Line: {
+            // 连线模式
+            QLineSeries *series = new QLineSeries();
+            series->setName(name);
+            
+            for (int i = 0; i < filteredX.size(); ++i) {
+                series->append(filteredX[i], filteredY[i]);
+            }
+            
+            series->setColor(seriesColor);
+            
+            QPen pen = series->pen();
+            pen.setWidth(style.lineWidth);
+            series->setPen(pen);
+            
+            m_chart->addSeries(series);
+            series->attachAxis(m_axisX);
+            series->attachAxis(m_axisY);
+            break;
+        }
+        
+        case SeriesDisplayMode::Scatter: {
+            // 散点模式
+            QScatterSeries *series = new QScatterSeries();
+            series->setName(name);
+            
+            for (int i = 0; i < filteredX.size(); ++i) {
+                series->append(filteredX[i], filteredY[i]);
+            }
+            
+            series->setColor(seriesColor);
+            series->setMarkerSize(style.scatterSize);
+            series->setMarkerShape(QScatterSeries::MarkerShapeCircle);
+            series->setBorderColor(seriesColor);
+            
+            m_chart->addSeries(series);
+            series->attachAxis(m_axisX);
+            series->attachAxis(m_axisY);
+            break;
+        }
+        
+        case SeriesDisplayMode::LineAndScatter: {
+            // 连线+散点模式
+            // 先添加连线
+            QLineSeries *lineSeries = new QLineSeries();
+            lineSeries->setName(name);
+            
+            for (int i = 0; i < filteredX.size(); ++i) {
+                lineSeries->append(filteredX[i], filteredY[i]);
+            }
+            
+            lineSeries->setColor(seriesColor);
+            
+            QPen pen = lineSeries->pen();
+            pen.setWidth(style.lineWidth);
+            lineSeries->setPen(pen);
+            
+            m_chart->addSeries(lineSeries);
+            lineSeries->attachAxis(m_axisX);
+            lineSeries->attachAxis(m_axisY);
+            
+            // 再添加散点（不显示在图例中）
+            QScatterSeries *scatterSeries = new QScatterSeries();
+            scatterSeries->setName(name + " (点)");
+            
+            for (int i = 0; i < filteredX.size(); ++i) {
+                scatterSeries->append(filteredX[i], filteredY[i]);
+            }
+            
+            scatterSeries->setColor(seriesColor);
+            scatterSeries->setMarkerSize(style.scatterSize);
+            scatterSeries->setMarkerShape(QScatterSeries::MarkerShapeCircle);
+            scatterSeries->setBorderColor(seriesColor);
+            
+            m_chart->addSeries(scatterSeries);
+            scatterSeries->attachAxis(m_axisX);
+            scatterSeries->attachAxis(m_axisY);
+            
+            // 隐藏散点的图例
+            m_chart->legend()->markers(scatterSeries).first()->setVisible(false);
+            break;
+        }
+    }
+    
+    // 收集曲线统计信息
+    SeriesMarkerInfo markerInfo;
+    markerInfo.seriesName = name;
+    markerInfo.color = seriesColor;
+    markerInfo.yMin = std::numeric_limits<double>::max();
+    markerInfo.yMax = std::numeric_limits<double>::lowest();
+    markerInfo.xMin = std::numeric_limits<double>::max();
+    markerInfo.xMax = std::numeric_limits<double>::lowest();
+    
+    for (int i = 0; i < filteredX.size(); ++i) {
+        markerInfo.xMin = qMin(markerInfo.xMin, filteredX[i]);
+        markerInfo.xMax = qMax(markerInfo.xMax, filteredX[i]);
+        markerInfo.yMin = qMin(markerInfo.yMin, filteredY[i]);
+        markerInfo.yMax = qMax(markerInfo.yMax, filteredY[i]);
+    }
+    
+    m_markerInfos.append(markerInfo);
     
     m_seriesCount++;
     
@@ -165,6 +291,8 @@ void ChartWidget::updateAxisRanges()
 
 void ChartWidget::clearChart()
 {
+    clearMarkerLines();
+    m_markerInfos.clear();
     m_chart->removeAllSeries();
     m_seriesCount = 0;
     
@@ -237,6 +365,225 @@ QColor ChartWidget::getNextColor()
     return colors[m_seriesCount % colors.size()];
 }
 
+void ChartWidget::showMarkerSettings()
+{
+    if (m_markerInfos.isEmpty()) {
+        return;
+    }
+    
+    QDialog dialog(this);
+    dialog.setWindowTitle("曲线标记设置");
+    dialog.setMinimumWidth(500);
+    
+    QVBoxLayout *mainLayout = new QVBoxLayout(&dialog);
+    
+    // 说明标签
+    QLabel *infoLabel = new QLabel("勾选要显示的标记线（延伸至整个图表区域）：");
+    mainLayout->addWidget(infoLabel);
+    
+    // 滚动区域
+    QScrollArea *scrollArea = new QScrollArea();
+    scrollArea->setWidgetResizable(true);
+    QWidget *scrollWidget = new QWidget();
+    QGridLayout *grid = new QGridLayout(scrollWidget);
+    
+    // 表头
+    grid->addWidget(new QLabel("<b>曲线</b>"), 0, 0);
+    grid->addWidget(new QLabel("<b>Y最小值</b>"), 0, 1);
+    grid->addWidget(new QLabel("<b>Y最大值</b>"), 0, 2);
+    grid->addWidget(new QLabel("<b>X起始</b>"), 0, 3);
+    grid->addWidget(new QLabel("<b>X终止</b>"), 0, 4);
+    
+    // 存储复选框
+    QList<QCheckBox*> yMinChecks, yMaxChecks, xMinChecks, xMaxChecks;
+    
+    for (int i = 0; i < m_markerInfos.size(); ++i) {
+        const SeriesMarkerInfo &info = m_markerInfos[i];
+        
+        // 曲线名称（带颜色指示）
+        QLabel *nameLabel = new QLabel(QString("<font color='%1'>●</font> %2")
+                                       .arg(info.color.name())
+                                       .arg(info.seriesName));
+        grid->addWidget(nameLabel, i + 1, 0);
+        
+        // Y最小值
+        QCheckBox *yMinCheck = new QCheckBox(QString::number(info.yMin, 'f', 4));
+        yMinCheck->setChecked(info.showYMin);
+        grid->addWidget(yMinCheck, i + 1, 1);
+        yMinChecks.append(yMinCheck);
+        
+        // Y最大值
+        QCheckBox *yMaxCheck = new QCheckBox(QString::number(info.yMax, 'f', 4));
+        yMaxCheck->setChecked(info.showYMax);
+        grid->addWidget(yMaxCheck, i + 1, 2);
+        yMaxChecks.append(yMaxCheck);
+        
+        // X起始值
+        QCheckBox *xMinCheck = new QCheckBox(QString::number(info.xMin, 'f', 4));
+        xMinCheck->setChecked(info.showXMin);
+        grid->addWidget(xMinCheck, i + 1, 3);
+        xMinChecks.append(xMinCheck);
+        
+        // X终止值
+        QCheckBox *xMaxCheck = new QCheckBox(QString::number(info.xMax, 'f', 4));
+        xMaxCheck->setChecked(info.showXMax);
+        grid->addWidget(xMaxCheck, i + 1, 4);
+        xMaxChecks.append(xMaxCheck);
+    }
+    
+    scrollArea->setWidget(scrollWidget);
+    mainLayout->addWidget(scrollArea);
+    
+    // 按钮
+    QDialogButtonBox *buttonBox = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
+    connect(buttonBox, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+    connect(buttonBox, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+    mainLayout->addWidget(buttonBox);
+    
+    if (dialog.exec() == QDialog::Accepted) {
+        // 更新标记设置
+        for (int i = 0; i < m_markerInfos.size(); ++i) {
+            m_markerInfos[i].showYMin = yMinChecks[i]->isChecked();
+            m_markerInfos[i].showYMax = yMaxChecks[i]->isChecked();
+            m_markerInfos[i].showXMin = xMinChecks[i]->isChecked();
+            m_markerInfos[i].showXMax = xMaxChecks[i]->isChecked();
+        }
+        
+        // 重新绘制标记线
+        updateMarkerLines();
+    }
+}
+
+void ChartWidget::clearMarkerLines()
+{
+    for (SeriesMarkerInfo &info : m_markerInfos) {
+        if (info.yMinLine) {
+            m_chart->removeSeries(info.yMinLine);
+            info.yMinLine = nullptr;
+        }
+        if (info.yMaxLine) {
+            m_chart->removeSeries(info.yMaxLine);
+            info.yMaxLine = nullptr;
+        }
+        if (info.xMinLine) {
+            m_chart->removeSeries(info.xMinLine);
+            info.xMinLine = nullptr;
+        }
+        if (info.xMaxLine) {
+            m_chart->removeSeries(info.xMaxLine);
+            info.xMaxLine = nullptr;
+        }
+    }
+}
+
+void ChartWidget::updateMarkerLines()
+{
+    // 先清除现有标记线
+    clearMarkerLines();
+    
+    // 获取当前坐标轴范围用于绘制延伸线
+    double axisXMin = m_axisX->min();
+    double axisXMax = m_axisX->max();
+    double axisYMin = m_axisY->min();
+    double axisYMax = m_axisY->max();
+    
+    for (SeriesMarkerInfo &info : m_markerInfos) {
+        QColor lighterColor = info.color.lighter(120);
+        
+        // Y最小值水平线
+        if (info.showYMin) {
+            info.yMinLine = new QLineSeries();
+            info.yMinLine->setName(QString("%1 Y_min").arg(info.seriesName));
+            info.yMinLine->append(axisXMin, info.yMin);
+            info.yMinLine->append(axisXMax, info.yMin);
+            
+            QPen pen(lighterColor);
+            pen.setStyle(Qt::DashLine);
+            pen.setWidth(2);
+            info.yMinLine->setPen(pen);
+            
+            m_chart->addSeries(info.yMinLine);
+            info.yMinLine->attachAxis(m_axisX);
+            info.yMinLine->attachAxis(m_axisY);
+            
+            // 隐藏图例
+            auto markers = m_chart->legend()->markers(info.yMinLine);
+            if (!markers.isEmpty()) {
+                markers.first()->setVisible(false);
+            }
+        }
+        
+        // Y最大值水平线
+        if (info.showYMax) {
+            info.yMaxLine = new QLineSeries();
+            info.yMaxLine->setName(QString("%1 Y_max").arg(info.seriesName));
+            info.yMaxLine->append(axisXMin, info.yMax);
+            info.yMaxLine->append(axisXMax, info.yMax);
+            
+            QPen pen(lighterColor);
+            pen.setStyle(Qt::DashDotLine);
+            pen.setWidth(2);
+            info.yMaxLine->setPen(pen);
+            
+            m_chart->addSeries(info.yMaxLine);
+            info.yMaxLine->attachAxis(m_axisX);
+            info.yMaxLine->attachAxis(m_axisY);
+            
+            // 隐藏图例
+            auto markers = m_chart->legend()->markers(info.yMaxLine);
+            if (!markers.isEmpty()) {
+                markers.first()->setVisible(false);
+            }
+        }
+        
+        // X起始垂直线
+        if (info.showXMin) {
+            info.xMinLine = new QLineSeries();
+            info.xMinLine->setName(QString("%1 X_start").arg(info.seriesName));
+            info.xMinLine->append(info.xMin, axisYMin);
+            info.xMinLine->append(info.xMin, axisYMax);
+            
+            QPen pen(lighterColor);
+            pen.setStyle(Qt::DotLine);
+            pen.setWidth(2);
+            info.xMinLine->setPen(pen);
+            
+            m_chart->addSeries(info.xMinLine);
+            info.xMinLine->attachAxis(m_axisX);
+            info.xMinLine->attachAxis(m_axisY);
+            
+            // 隐藏图例
+            auto markers = m_chart->legend()->markers(info.xMinLine);
+            if (!markers.isEmpty()) {
+                markers.first()->setVisible(false);
+            }
+        }
+        
+        // X终止垂直线
+        if (info.showXMax) {
+            info.xMaxLine = new QLineSeries();
+            info.xMaxLine->setName(QString("%1 X_end").arg(info.seriesName));
+            info.xMaxLine->append(info.xMax, axisYMin);
+            info.xMaxLine->append(info.xMax, axisYMax);
+            
+            QPen pen(lighterColor);
+            pen.setStyle(Qt::DashDotDotLine);
+            pen.setWidth(2);
+            info.xMaxLine->setPen(pen);
+            
+            m_chart->addSeries(info.xMaxLine);
+            info.xMaxLine->attachAxis(m_axisX);
+            info.xMaxLine->attachAxis(m_axisY);
+            
+            // 隐藏图例
+            auto markers = m_chart->legend()->markers(info.xMaxLine);
+            if (!markers.isEmpty()) {
+                markers.first()->setVisible(false);
+            }
+        }
+    }
+}
+
 // ==================== InteractiveChartView ====================
 
 InteractiveChartView::InteractiveChartView(QChart *chart, QWidget *parent)
@@ -246,6 +593,7 @@ InteractiveChartView::InteractiveChartView(QChart *chart, QWidget *parent)
     , m_isDragging(false)
     , m_lastMousePos()
     , m_verticalLine(nullptr)
+    , m_horizontalLine(nullptr)
     , m_tooltipBg(nullptr)
     , m_tooltipText(nullptr)
 {
@@ -259,6 +607,12 @@ InteractiveChartView::InteractiveChartView(QChart *chart, QWidget *parent)
     m_verticalLine->setPen(dashedPen);
     m_verticalLine->setVisible(false);
     scene()->addItem(m_verticalLine);
+    
+    // 创建水平虚线
+    m_horizontalLine = new QGraphicsLineItem();
+    m_horizontalLine->setPen(dashedPen);
+    m_horizontalLine->setVisible(false);
+    scene()->addItem(m_horizontalLine);
     
     // 创建提示框背景
     m_tooltipBg = new QGraphicsRectItem();
@@ -436,13 +790,18 @@ void InteractiveChartView::updateCrosshair(const QPoint &pos)
     // 将像素坐标转换为图表坐标
     QPointF chartPos = chart()->mapToValue(pos);
     double xValue = chartPos.x();
+    double yValue = chartPos.y();
     
     // 绘制垂直虚线
     m_verticalLine->setLine(pos.x(), plotArea.top(), pos.x(), plotArea.bottom());
     m_verticalLine->setVisible(true);
     
+    // 绘制水平虚线
+    m_horizontalLine->setLine(plotArea.left(), pos.y(), plotArea.right(), pos.y());
+    m_horizontalLine->setVisible(true);
+    
     // 构建提示文本
-    QString tooltipStr = buildTooltipText(xValue);
+    QString tooltipStr = buildTooltipText(xValue, yValue);
     m_tooltipText->setHtml(tooltipStr);
     
     // 计算提示框位置和大小
@@ -471,30 +830,50 @@ void InteractiveChartView::updateCrosshair(const QPoint &pos)
 void InteractiveChartView::hideCrosshair()
 {
     m_verticalLine->setVisible(false);
+    m_horizontalLine->setVisible(false);
     m_tooltipBg->setVisible(false);
     m_tooltipText->setVisible(false);
 }
 
-QString InteractiveChartView::buildTooltipText(double xValue)
+QString InteractiveChartView::buildTooltipText(double xValue, double yValue)
 {
-    QString html = QString("<b>X: %1</b><br>").arg(xValue, 0, 'f', 4);
+    QString html = QString("<b>X: %1 &nbsp; Y: %2</b><br>").arg(xValue, 0, 'f', 4).arg(yValue, 0, 'f', 4);
     html += "<table cellspacing='2'>";
     
     for (QAbstractSeries *abstractSeries : chart()->series()) {
-        QLineSeries *series = qobject_cast<QLineSeries*>(abstractSeries);
-        if (!series) continue;
+        // 尝试作为 QLineSeries
+        QLineSeries *lineSeries = qobject_cast<QLineSeries*>(abstractSeries);
+        if (lineSeries) {
+            double yValue = interpolateY(lineSeries, xValue);
+            QColor color = lineSeries->color();
+            
+            html += QString("<tr>"
+                            "<td><font color='%1'>●</font></td>"
+                            "<td>%2:</td>"
+                            "<td><b>%3</b></td>"
+                            "</tr>")
+                    .arg(color.name())
+                    .arg(lineSeries->name())
+                    .arg(yValue, 0, 'f', 4);
+            continue;
+        }
         
-        double yValue = interpolateY(series, xValue);
-        QColor color = series->color();
-        
-        html += QString("<tr>"
-                        "<td><font color='%1'>●</font></td>"
-                        "<td>%2:</td>"
-                        "<td><b>%3</b></td>"
-                        "</tr>")
-                .arg(color.name())
-                .arg(series->name())
-                .arg(yValue, 0, 'f', 4);
+        // 尝试作为 QScatterSeries
+        QScatterSeries *scatterSeries = qobject_cast<QScatterSeries*>(abstractSeries);
+        if (scatterSeries) {
+            // 对于散点图，找最近的点
+            double yValue = interpolateYScatter(scatterSeries, xValue);
+            QColor color = scatterSeries->color();
+            
+            html += QString("<tr>"
+                            "<td><font color='%1'>●</font></td>"
+                            "<td>%2:</td>"
+                            "<td><b>%3</b></td>"
+                            "</tr>")
+                    .arg(color.name())
+                    .arg(scatterSeries->name())
+                    .arg(yValue, 0, 'f', 4);
+        }
     }
     
     html += "</table>";
@@ -541,4 +920,26 @@ double InteractiveChartView::interpolateY(QLineSeries *series, double xValue)
     
     double t = (xValue - x0) / (x1 - x0);
     return y0 + t * (y1 - y0);
+}
+
+double InteractiveChartView::interpolateYScatter(QScatterSeries *series, double xValue)
+{
+    QList<QPointF> points = series->points();
+    if (points.isEmpty()) {
+        return 0;
+    }
+    
+    // 对于散点图，找最接近xValue的点
+    double minDist = std::numeric_limits<double>::max();
+    double yValue = 0;
+    
+    for (const QPointF &point : points) {
+        double dist = std::abs(point.x() - xValue);
+        if (dist < minDist) {
+            minDist = dist;
+            yValue = point.y();
+        }
+    }
+    
+    return yValue;
 }

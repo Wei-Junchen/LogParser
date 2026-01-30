@@ -10,10 +10,12 @@
 #include <QGroupBox>
 #include <QComboBox>
 #include <QSet>
+#include <QMenu>
 #include "chartwidget.h"
 #include "csvparser.h"
 #include "presetmanager.h"
 #include "scriptengine.h"
+#include "seriesstyledialog.h"
 
 /**
  * @brief Canvas面板类
@@ -67,6 +69,11 @@ private slots:
      * @brief X轴选择变化
      */
     void onXAxisChanged(int index);
+    
+    /**
+     * @brief 显示列项右键菜单
+     */
+    void showColumnContextMenu(const QPoint &pos);
 
 private:
     /**
@@ -94,6 +101,11 @@ private:
      * 当X轴选择某列时，该列在Y轴变为不可选
      */
     void updateYAxisAvailability();
+    
+    /**
+     * @brief 更新列表项的样式指示器
+     */
+    void updateItemStyleIndicator(QListWidgetItem *item, bool hasStyle);
 
 public:
     /**
@@ -142,6 +154,9 @@ private:
     
     // 已选中的计算列
     QSet<QString> m_selectedComputedColumns;
+    
+    // 曲线样式设置 (列名/计算列名 -> 样式)
+    QMap<QString, SeriesStyle> m_seriesStyles;
 };
 
 #endif // CANVASPANEL_H

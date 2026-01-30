@@ -11,6 +11,7 @@
 #include <QInputDialog>
 #include <QLabel>
 #include <QApplication>
+#include <iostream>
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -119,6 +120,10 @@ void MainWindow::createMenuBar()
     connect(exportPresetAction, &QAction::triggered, this, &MainWindow::onExportPreset);
     fileMenu->addAction(exportPresetAction);
     
+    QAction *resetAllAction = new QAction("重置所有设置(&R)", this);
+    connect(resetAllAction, &QAction::triggered, this, &MainWindow::onResetAllSettings);
+    fileMenu->addAction(resetAllAction);
+
     fileMenu->addSeparator();
     
     QAction *exitAction = new QAction("退出(&X)", this);
@@ -266,6 +271,7 @@ void MainWindow::onAddCanvas()
     m_canvasTabWidget->setCurrentWidget(canvas);
     
     m_statusLabel->setText(QString("已添加 %1").arg(title));
+    refreshAllCanvases();
 }
 
 void MainWindow::onRemoveCanvas()
@@ -792,5 +798,42 @@ void MainWindow::openRecentFile(const QString &filePath)
         QMessageBox::critical(this, "错误", 
             QString("无法解析文件：\n%1").arg(m_csvParser.getLastError()));
         m_statusLabel->setText("加载失败");
+    }
+}
+
+void MainWindow::onResetAllSettings()
+{
+    QMessageBox::StandardButton reply = QMessageBox::warning(this, "确认重置",
+        "此操作将删除所有用户设置和预设配置，包括：\n\n"
+        "• 惰性配置（窗口位置、最近打开的文件等）\n"
+        "• 所有保存的预设方案\n\n"
+        "重置后程序将关闭，下次启动时将使用默认设置。\n\n"
+        "确定要继续吗？",
+        QMessageBox::Yes | QMessageBox::No,
+        QMessageBox::No);
+    
+    if (reply != QMessageBox::Yes) {
+        return;
+    }
+    
+    // 获取配置目录路径
+    QString configPath = QStandardPaths::writableLocation(QStandardPaths::AppConfigLocation);
+    QDir configDir(configPath);
+    
+    if (configDir.exists()) {
+        // 删除整个配置目录
+        if (configDir.removeRecursively()) {
+            QMessageBox::information(this, "重置完成",
+                QString("已成功删除配置目录：\n%1\n\n程序将关闭。").arg(configPath));
+            
+            // 关闭程序（不保存当前状态）
+            QApplication::quit();
+        } else {
+            QMessageBox::critical(this, "重置失败",
+                QString("无法删除配置目录：\n%1\n\n请检查文件权限或手动删除。").arg(configPath));
+        }
+    } else {
+        QMessageBox::information(this, "无需重置",
+            "配置目录不存在，无需重置。");
     }
 }

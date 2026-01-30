@@ -79,6 +79,11 @@ private slots:
      * @brief 导出预设
      */
     void onExportPreset();
+    
+    /**
+     * @brief 重置所有设置
+     */
+    void onResetAllSettings();
 
 private:
     /**

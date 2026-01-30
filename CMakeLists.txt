@@ -26,6 +26,7 @@ set(SOURCES
     src/scriptengine.cpp
     src/scripteditor.cpp
     src/appsettings.cpp
+    src/seriesstyledialog.cpp
 )
 
 set(HEADERS
@@ -37,6 +38,7 @@ set(HEADERS
     src/scriptengine.h
     src/scripteditor.h
     src/appsettings.h
+    src/seriesstyledialog.h
 )
 
 add_executable(${PROJECT_NAME} ${SOURCES} ${HEADERS})
