@@ -9,11 +9,13 @@
 #include <QToolBar>
 #include <QComboBox>
 #include <QMenu>
+#include <QCloseEvent>
 #include "csvparser.h"
 #include "canvaspanel.h"
 #include "presetmanager.h"
 #include "scriptengine.h"
 #include "scripteditor.h"
+#include "appsettings.h"
 
 /**
  * @brief 主窗口类
@@ -67,6 +69,16 @@ private slots:
      * @brief 删除预设
      */
     void onDeletePreset();
+    
+    /**
+     * @brief 导入预设
+     */
+    void onImportPreset();
+    
+    /**
+     * @brief 导出预设
+     */
+    void onExportPreset();
 
 private:
     /**
@@ -108,6 +120,32 @@ private:
      * @brief 显示Canvas右键菜单
      */
     void showCanvasContextMenu(int index, const QPoint &globalPos);
+    
+    /**
+     * @brief 保存窗口状态
+     */
+    void saveWindowState();
+    
+    /**
+     * @brief 恢复窗口状态
+     */
+    void restoreWindowState();
+    
+    /**
+     * @brief 更新最近打开文件菜单
+     */
+    void updateRecentFilesMenu();
+    
+    /**
+     * @brief 打开最近的文件
+     */
+    void openRecentFile(const QString &filePath);
+
+protected:
+    /**
+     * @brief 窗口关闭事件
+     */
+    void closeEvent(QCloseEvent *event) override;
 
 private:
     // CSV解析器
@@ -129,6 +167,9 @@ private:
     
     // Canvas计数器
     int m_canvasCounter;
+    
+    // 最近文件菜单
+    QMenu *m_recentFilesMenu;
 };
 
 #endif // MAINWINDOW_H

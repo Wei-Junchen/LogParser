@@ -78,12 +78,16 @@ struct PlotPreset
 struct PresetScheme
 {
     QString name;                       // 方案名称
+    QString description;                // 方案描述（可选）
+    QString version;                    // 版本号
     QList<ScriptPreset> scripts;        // 脚本列表（先执行）
     QList<PlotPreset> canvasPresets;    // 各Canvas的预设
     
     QJsonObject toJson() const {
         QJsonObject obj;
         obj["name"] = name;
+        obj["description"] = description;
+        obj["version"] = version.isEmpty() ? "1.0" : version;
         
         // 保存脚本
         QJsonArray scriptArray;
@@ -104,6 +108,8 @@ struct PresetScheme
     static PresetScheme fromJson(const QJsonObject &obj) {
         PresetScheme scheme;
         scheme.name = obj["name"].toString();
+        scheme.description = obj["description"].toString();
+        scheme.version = obj["version"].toString("1.0");
         
         // 加载脚本
         QJsonArray scriptArr = obj["scripts"].toArray();
@@ -123,6 +129,7 @@ struct PresetScheme
 /**
  * @brief 预设管理器类
  * 负责保存、加载和管理绘图预设
+ * 每个预设方案保存为独立的JSON文件，便于跨机导入导出
  */
 class PresetManager
 {
@@ -160,22 +167,64 @@ public:
     bool hasScheme(const QString &name) const;
     
     /**
-     * @brief 加载所有预设
+     * @brief 重新扫描预设目录，刷新预设列表
      */
-    void loadPresets();
+    void refresh();
     
     /**
-     * @brief 保存所有预设到文件
+     * @brief 导出预设到指定文件
+     * @param name 预设名称
+     * @param filePath 导出文件路径
+     * @return 成功返回true
      */
-    bool saveToFile();
+    bool exportScheme(const QString &name, const QString &filePath) const;
+    
+    /**
+     * @brief 从文件导入预设
+     * @param filePath 导入文件路径
+     * @param overwrite 如果同名预设已存在，是否覆盖
+     * @return 成功返回导入的预设名称，失败返回空字符串
+     */
+    QString importScheme(const QString &filePath, bool overwrite = false);
+    
+    /**
+     * @brief 获取预设目录路径
+     */
+    QString getPresetsDirectory() const;
+    
+    /**
+     * @brief 获取指定预设的文件路径
+     */
+    QString getSchemeFilePath(const QString &name) const;
 
 private:
     /**
-     * @brief 获取预设文件路径
+     * @brief 扫描预设目录，加载所有预设名称
      */
-    QString getPresetsFilePath() const;
+    void scanPresets();
     
-    QList<PresetScheme> m_schemes;
+    /**
+     * @brief 从文件加载预设
+     */
+    PresetScheme loadSchemeFromFile(const QString &filePath) const;
+    
+    /**
+     * @brief 保存预设到文件
+     */
+    bool saveSchemeToFile(const PresetScheme &scheme, const QString &filePath) const;
+    
+    /**
+     * @brief 将名称转换为安全的文件名
+     */
+    QString nameToFileName(const QString &name) const;
+    
+    /**
+     * @brief 从文件名提取预设名称
+     */
+    QString fileNameToName(const QString &fileName) const;
+    
+    // 预设名称列表（不加载完整内容，按需加载）
+    QStringList m_schemeNames;
 };
 
 #endif // PRESETMANAGER_H

@@ -10,12 +10,14 @@
 #include <QFileInfo>
 #include <QInputDialog>
 #include <QLabel>
+#include <QApplication>
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
     , m_canvasCounter(0)
     , m_statusLabel(nullptr)
     , m_scriptEngine(nullptr)
+    , m_recentFilesMenu(nullptr)
 {
     // 创建脚本引擎
     m_scriptEngine = new ScriptEngine(this);
@@ -29,7 +31,15 @@ MainWindow::MainWindow(QWidget *parent)
     createToolBar();
     
     setWindowTitle("LogParser - CSV数据可视化工具");
-    resize(1200, 800);
+    
+    // 恢复窗口状态
+    restoreWindowState();
+    
+    // 自动选择上次使用的预设
+    QString lastPreset = AppSettings::instance().lastUsedPreset();
+    if (!lastPreset.isEmpty() && m_presetManager.hasScheme(lastPreset)) {
+        m_presetComboBox->setCurrentText(lastPreset);
+    }
 }
 
 MainWindow::~MainWindow()
@@ -87,12 +97,27 @@ void MainWindow::createMenuBar()
     connect(openAction, &QAction::triggered, this, &MainWindow::onOpenFile);
     fileMenu->addAction(openAction);
     
+    // 最近打开的文件子菜单
+    m_recentFilesMenu = fileMenu->addMenu("最近打开的文件");
+    updateRecentFilesMenu();
+    
     fileMenu->addSeparator();
     
     QAction *saveAction = new QAction("保存图表(&S)", this);
     saveAction->setShortcut(QKeySequence::Save);
     connect(saveAction, &QAction::triggered, this, &MainWindow::onSaveChart);
     fileMenu->addAction(saveAction);
+    
+    fileMenu->addSeparator();
+    
+    // 预设导入导出
+    QAction *importPresetAction = new QAction("导入预设(&I)...", this);
+    connect(importPresetAction, &QAction::triggered, this, &MainWindow::onImportPreset);
+    fileMenu->addAction(importPresetAction);
+    
+    QAction *exportPresetAction = new QAction("导出预设(&E)...", this);
+    connect(exportPresetAction, &QAction::triggered, this, &MainWindow::onExportPreset);
+    fileMenu->addAction(exportPresetAction);
     
     fileMenu->addSeparator();
     
@@ -188,15 +213,25 @@ void MainWindow::createToolBar()
 
 void MainWindow::onOpenFile()
 {
+    // 使用上次打开的目录
+    QString lastDir = AppSettings::instance().lastOpenDirectory();
+    
     QString filePath = QFileDialog::getOpenFileName(this, 
         "打开CSV文件", 
-        QString(),
+        lastDir,
         "所有文件 (*)");
         // "CSV文件 (*.csv);;所有文件 (*)");
     
     if (filePath.isEmpty()) {
         return;
     }
+    
+    // 保存目录到惰性配置
+    AppSettings::instance().setLastOpenDirectory(filePath);
+    
+    // 添加到最近文件
+    AppSettings::instance().addRecentFile(filePath);
+    updateRecentFilesMenu();
     
     m_statusLabel->setText("正在加载文件...");
     QApplication::processEvents();
@@ -278,14 +313,20 @@ void MainWindow::onSaveChart()
         return;
     }
     
+    // 使用上次保存的目录
+    QString lastDir = AppSettings::instance().lastSaveDirectory();
+    
     QString filePath = QFileDialog::getSaveFileName(this,
         "保存图表",
-        "chart.png",
+        lastDir + "/chart.png",
         "PNG图片 (*.png);;JPEG图片 (*.jpg);;所有文件 (*)");
     
     if (filePath.isEmpty()) {
         return;
     }
+    
+    // 保存目录到惰性配置
+    AppSettings::instance().setLastSaveDirectory(filePath);
     
     if (canvas->getChart()->saveAsImage(filePath)) {
         m_statusLabel->setText(QString("图表已保存至：%1").arg(filePath));
@@ -390,6 +431,10 @@ void MainWindow::onSavePreset()
     if (m_presetManager.saveScheme(scheme)) {
         refreshPresetComboBox();
         m_presetComboBox->setCurrentText(name);
+        
+        // 记录上次使用的预设
+        AppSettings::instance().setLastUsedPreset(name);
+        
         m_statusLabel->setText(QString("预设方案 \"%1\" 已保存 (含 %2 个脚本)")
             .arg(name).arg(scheme.scripts.size()));
     } else {
@@ -485,6 +530,9 @@ void MainWindow::onLoadPreset()
         onAddCanvas();
     }
     
+    // 记录上次使用的预设
+    AppSettings::instance().setLastUsedPreset(name);
+    
     m_statusLabel->setText(QString("已加载预设方案 \"%1\" (执行了 %2/%3 个脚本)")
         .arg(name).arg(scriptSuccess).arg(scheme.scripts.size()));
 }
@@ -573,4 +621,176 @@ void MainWindow::showCanvasContextMenu(int index, const QPoint &globalPos)
     });
     
     menu.exec(globalPos);
+}
+
+void MainWindow::onImportPreset()
+{
+    // 使用上次导入的目录
+    QString lastDir = AppSettings::instance().lastPresetImportDirectory();
+    
+    QString filePath = QFileDialog::getOpenFileName(this,
+        "导入预设",
+        lastDir,
+        "JSON预设文件 (*.json);;所有文件 (*)");
+    
+    if (filePath.isEmpty()) {
+        return;
+    }
+    
+    // 保存目录到惰性配置
+    AppSettings::instance().setLastPresetImportDirectory(filePath);
+    
+    QString importedName = m_presetManager.importScheme(filePath, false);
+    
+    if (!importedName.isEmpty()) {
+        refreshPresetComboBox();
+        m_presetComboBox->setCurrentText(importedName);
+        m_statusLabel->setText(QString("已导入预设方案 \"%1\"").arg(importedName));
+        
+        QMessageBox::information(this, "导入成功",
+            QString("预设方案 \"%1\" 已成功导入").arg(importedName));
+    } else {
+        QMessageBox::critical(this, "导入失败",
+            "无法导入预设文件，请检查文件格式是否正确");
+    }
+}
+
+void MainWindow::onExportPreset()
+{
+    QString name = m_presetComboBox->currentText();
+    if (name.isEmpty()) {
+        QMessageBox::warning(this, "警告", "请先选择一个预设方案");
+        return;
+    }
+    
+    // 使用上次导出的目录
+    QString lastDir = AppSettings::instance().lastPresetExportDirectory();
+    
+    // 使用预设名称作为默认文件名
+    QString defaultFileName = lastDir + "/" + name + ".json";
+    
+    QString filePath = QFileDialog::getSaveFileName(this,
+        "导出预设",
+        defaultFileName,
+        "JSON预设文件 (*.json);;所有文件 (*)");
+    
+    if (filePath.isEmpty()) {
+        return;
+    }
+    
+    // 保存目录到惰性配置
+    AppSettings::instance().setLastPresetExportDirectory(filePath);
+    
+    if (m_presetManager.exportScheme(name, filePath)) {
+        m_statusLabel->setText(QString("预设方案 \"%1\" 已导出至 %2").arg(name, filePath));
+        QMessageBox::information(this, "导出成功",
+            QString("预设方案 \"%1\" 已成功导出到：\n%2").arg(name, filePath));
+    } else {
+        QMessageBox::critical(this, "导出失败", "无法导出预设文件");
+    }
+}
+
+void MainWindow::saveWindowState()
+{
+    AppSettings &settings = AppSettings::instance();
+    
+    if (isMaximized()) {
+        settings.setWindowMaximized(true);
+    } else {
+        settings.setWindowMaximized(false);
+        settings.setWindowSize(size());
+        settings.setWindowPosition(pos());
+    }
+    
+    settings.sync();
+}
+
+void MainWindow::restoreWindowState()
+{
+    AppSettings &settings = AppSettings::instance();
+    
+    if (settings.isWindowMaximized()) {
+        showMaximized();
+    } else {
+        resize(settings.windowSize());
+        move(settings.windowPosition());
+    }
+}
+
+void MainWindow::closeEvent(QCloseEvent *event)
+{
+    saveWindowState();
+    event->accept();
+}
+
+void MainWindow::updateRecentFilesMenu()
+{
+    m_recentFilesMenu->clear();
+    
+    QStringList recentFiles = AppSettings::instance().recentFiles();
+    
+    if (recentFiles.isEmpty()) {
+        QAction *emptyAction = m_recentFilesMenu->addAction("(无)");
+        emptyAction->setEnabled(false);
+        return;
+    }
+    
+    for (const QString &filePath : recentFiles) {
+        QFileInfo info(filePath);
+        QString displayName = info.fileName();
+        
+        QAction *action = m_recentFilesMenu->addAction(displayName);
+        action->setData(filePath);
+        action->setToolTip(filePath);
+        
+        connect(action, &QAction::triggered, [this, filePath]() {
+            openRecentFile(filePath);
+        });
+    }
+    
+    m_recentFilesMenu->addSeparator();
+    
+    QAction *clearAction = m_recentFilesMenu->addAction("清除最近打开记录");
+    connect(clearAction, &QAction::triggered, [this]() {
+        AppSettings::instance().clearRecentFiles();
+        updateRecentFilesMenu();
+        m_statusLabel->setText("已清除最近打开的文件记录");
+    });
+}
+
+void MainWindow::openRecentFile(const QString &filePath)
+{
+    QFileInfo info(filePath);
+    if (!info.exists()) {
+        QMessageBox::warning(this, "文件不存在",
+            QString("文件不存在或已被移动：\n%1").arg(filePath));
+        return;
+    }
+    
+    m_statusLabel->setText("正在加载文件...");
+    QApplication::processEvents();
+    
+    if (m_csvParser.parseFile(filePath)) {
+        m_currentFilePath = filePath;
+        
+        // 保存目录到惰性配置
+        AppSettings::instance().setLastOpenDirectory(filePath);
+        
+        // 添加到最近文件（移到最前）
+        AppSettings::instance().addRecentFile(filePath);
+        updateRecentFilesMenu();
+        
+        // 刷新所有Canvas
+        refreshAllCanvases();
+        
+        QFileInfo fileInfo(filePath);
+        m_statusLabel->setText(QString("已加载: %1 (%2行 x %3列)")
+            .arg(fileInfo.fileName())
+            .arg(m_csvParser.getRowCount())
+            .arg(m_csvParser.getColumnCount()));
+    } else {
+        QMessageBox::critical(this, "错误", 
+            QString("无法解析文件：\n%1").arg(m_csvParser.getLastError()));
+        m_statusLabel->setText("加载失败");
+    }
 }

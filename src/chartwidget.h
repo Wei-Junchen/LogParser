@@ -5,6 +5,11 @@
 #include <QtCharts>
 #include <QVector>
 #include <QString>
+#include <QPushButton>
+#include <QToolButton>
+#include <QLabel>
+#include <QGraphicsLineItem>
+#include <QGraphicsTextItem>
 
 #if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
 using namespace Qt;
@@ -12,9 +17,12 @@ using namespace Qt;
 
 QT_CHARTS_USE_NAMESPACE
 
+// 前向声明
+class InteractiveChartView;
+
 /**
  * @brief 图表组件类
- * 用于显示和管理图表
+ * 用于显示和管理图表，支持缩放和鼠标悬停显示
  */
 class ChartWidget : public QWidget
 {
@@ -26,10 +34,6 @@ public:
     
     /**
      * @brief 添加一条数据线
-     * @param name 数据线名称
-     * @param xData X轴数据
-     * @param yData Y轴数据
-     * @param color 线条颜色（可选）
      */
     void addSeries(const QString &name, 
                    const QVector<double> &xData, 
@@ -43,25 +47,21 @@ public:
     
     /**
      * @brief 设置图表标题
-     * @param title 标题
      */
     void setChartTitle(const QString &title);
     
     /**
      * @brief 设置X轴标签
-     * @param label X轴标签
      */
     void setXAxisLabel(const QString &label);
     
     /**
      * @brief 设置Y轴标签
-     * @param label Y轴标签
      */
     void setYAxisLabel(const QString &label);
     
     /**
      * @brief 设置是否显示图例
-     * @param visible 是否显示
      */
     void setLegendVisible(bool visible);
     
@@ -72,25 +72,79 @@ public:
     
     /**
      * @brief 保存图表为图片
-     * @param filePath 保存路径
-     * @return 是否成功
      */
     bool saveAsImage(const QString &filePath);
 
+public slots:
+    void zoomIn();
+    void zoomOut();
+    void zoomReset();
+
+private:
+    void setupToolbar();
+    QColor getNextColor();
+    void updateAxisRanges();
+
 private:
     QChart *m_chart;
-    QChartView *m_chartView;
+    InteractiveChartView *m_chartView;
     QValueAxis *m_axisX;
     QValueAxis *m_axisY;
     QVBoxLayout *m_layout;
     
+    // 工具栏
+    QWidget *m_toolbar;
+    QToolButton *m_zoomInBtn;
+    QToolButton *m_zoomOutBtn;
+    QToolButton *m_zoomResetBtn;
+    
     int m_seriesCount;
     
-    /**
-     * @brief 获取下一个颜色
-     * @return 颜色
-     */
-    QColor getNextColor();
+    // 原始坐标轴范围
+    double m_originalXMin, m_originalXMax;
+    double m_originalYMin, m_originalYMax;
+};
+
+/**
+ * @brief 自定义ChartView，支持鼠标悬停显示垂直线和数值，以及拖拽平移
+ */
+class InteractiveChartView : public QChartView
+{
+    Q_OBJECT
+    
+public:
+    explicit InteractiveChartView(QChart *chart, QWidget *parent = nullptr);
+    ~InteractiveChartView();
+    
+    void setAxes(QValueAxis *axisX, QValueAxis *axisY);
+
+protected:
+    void mousePressEvent(QMouseEvent *event) override;
+    void mouseMoveEvent(QMouseEvent *event) override;
+    void mouseReleaseEvent(QMouseEvent *event) override;
+    void leaveEvent(QEvent *event) override;
+    void wheelEvent(QWheelEvent *event) override;
+
+private:
+    void updateCrosshair(const QPoint &pos);
+    void hideCrosshair();
+    QString buildTooltipText(double xValue);
+    double interpolateY(QLineSeries *series, double xValue);
+
+private:
+    QValueAxis *m_axisX;
+    QValueAxis *m_axisY;
+    
+    // 拖拽相关
+    bool m_isDragging;
+    QPoint m_lastMousePos;
+    
+    // 垂直虚线
+    QGraphicsLineItem *m_verticalLine;
+    // 提示框背景
+    QGraphicsRectItem *m_tooltipBg;
+    // 提示文字
+    QGraphicsTextItem *m_tooltipText;
 };
 
 #endif // CHARTWIDGET_H
