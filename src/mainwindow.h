@@ -36,6 +36,11 @@ private slots:
     void onOpenFile();
     
     /**
+     * @brief 打开文件夹（递归搜索CSV文件）
+     */
+    void onOpenFolder();
+    
+    /**
      * @brief 添加新Canvas
      */
     void onAddCanvas();

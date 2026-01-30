@@ -98,6 +98,11 @@ void MainWindow::createMenuBar()
     connect(openAction, &QAction::triggered, this, &MainWindow::onOpenFile);
     fileMenu->addAction(openAction);
     
+    QAction *openFolderAction = new QAction("打开文件夹(&F)...", this);
+    openFolderAction->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_O));
+    connect(openFolderAction, &QAction::triggered, this, &MainWindow::onOpenFolder);
+    fileMenu->addAction(openFolderAction);
+    
     // 最近打开的文件子菜单
     m_recentFilesMenu = fileMenu->addMenu("最近打开的文件");
     updateRecentFilesMenu();
@@ -156,7 +161,8 @@ void MainWindow::createMenuBar()
             "1. 打开CSV文件\n"
             "2. 添加/删除Canvas标签页\n"
             "3. 在每个Canvas中点击列名即可添加/移除曲线\n"
-            "4. 可选择不同的X轴数据源");
+            "4. 可选择不同的X轴数据源\n\n"
+            "作者: 魏俊臣");
     });
     helpMenu->addAction(aboutAction);
 }
@@ -170,6 +176,11 @@ void MainWindow::createToolBar()
     // 打开文件
     QAction *openAction = toolBar->addAction("打开CSV");
     connect(openAction, &QAction::triggered, this, &MainWindow::onOpenFile);
+    
+    // 打开文件夹
+    QAction *openFolderAction = toolBar->addAction("打开文件夹");
+    openFolderAction->setToolTip("打开文件夹并搜索CSV文件");
+    connect(openFolderAction, &QAction::triggered, this, &MainWindow::onOpenFolder);
     
     toolBar->addSeparator();
     
@@ -245,6 +256,122 @@ void MainWindow::onOpenFile()
         m_currentFilePath = filePath;
         
         // 刷新所有Canvas
+        refreshAllCanvases();
+        
+        QFileInfo fileInfo(filePath);
+        m_statusLabel->setText(QString("已加载: %1 (%2行 x %3列)")
+            .arg(fileInfo.fileName())
+            .arg(m_csvParser.getRowCount())
+            .arg(m_csvParser.getColumnCount()));
+    } else {
+        QMessageBox::critical(this, "错误", 
+            QString("无法解析文件：\n%1").arg(m_csvParser.getLastError()));
+        m_statusLabel->setText("加载失败");
+    }
+}
+
+void MainWindow::onOpenFolder()
+{
+    // 使用上次打开的目录
+    QString lastDir = AppSettings::instance().lastOpenDirectory();
+    
+    QString folderPath = QFileDialog::getExistingDirectory(this,
+        "选择文件夹",
+        lastDir,
+        QFileDialog::ShowDirsOnly | QFileDialog::DontResolveSymlinks);
+    
+    if (folderPath.isEmpty()) {
+        return;
+    }
+    
+    // 保存目录到惰性配置
+    AppSettings::instance().setLastOpenDirectory(folderPath);
+    
+    m_statusLabel->setText("正在搜索CSV文件...");
+    QApplication::processEvents();
+    
+    // 搜索CSV文件（当前目录和一层子目录）
+    QStringList csvFiles;
+    QDir rootDir(folderPath);
+    
+    // 搜索当前目录
+    QStringList filters;
+    filters << "*.csv" << "*.CSV";
+    
+    QFileInfoList currentDirFiles = rootDir.entryInfoList(filters, QDir::Files);
+    for (const QFileInfo &info : currentDirFiles) {
+        csvFiles.append(info.absoluteFilePath());
+    }
+    
+    // 搜索一层子目录
+    QFileInfoList subDirs = rootDir.entryInfoList(QDir::Dirs | QDir::NoDotAndDotDot);
+    for (const QFileInfo &dirInfo : subDirs) {
+        QDir subDir(dirInfo.absoluteFilePath());
+        QFileInfoList subDirFiles = subDir.entryInfoList(filters, QDir::Files);
+        for (const QFileInfo &info : subDirFiles) {
+            csvFiles.append(info.absoluteFilePath());
+        }
+    }
+    
+    if (csvFiles.isEmpty()) {
+        QMessageBox::information(this, "未找到文件",
+            QString("在 \"%1\" 及其子目录中未找到CSV文件。").arg(folderPath));
+        m_statusLabel->setText("未找到CSV文件");
+        return;
+    }
+    
+    // 如果只有一个文件，直接打开
+    if (csvFiles.size() == 1) {
+        QString filePath = csvFiles.first();
+        
+        AppSettings::instance().addRecentFile(filePath);
+        updateRecentFilesMenu();
+        
+        if (m_csvParser.parseFile(filePath)) {
+            m_currentFilePath = filePath;
+            refreshAllCanvases();
+            
+            QFileInfo fileInfo(filePath);
+            m_statusLabel->setText(QString("已加载: %1 (%2行 x %3列)")
+                .arg(fileInfo.fileName())
+                .arg(m_csvParser.getRowCount())
+                .arg(m_csvParser.getColumnCount()));
+        } else {
+            QMessageBox::critical(this, "错误", 
+                QString("无法解析文件：\n%1").arg(m_csvParser.getLastError()));
+            m_statusLabel->setText("加载失败");
+        }
+        return;
+    }
+    
+    // 多个文件，让用户选择
+    QStringList displayNames;
+    for (const QString &filePath : csvFiles) {
+        QFileInfo info(filePath);
+        // 显示相对于选择目录的路径
+        QString relativePath = rootDir.relativeFilePath(filePath);
+        displayNames.append(relativePath);
+    }
+    
+    bool ok;
+    QString selected = QInputDialog::getItem(this, "选择CSV文件",
+        QString("在文件夹中找到 %1 个CSV文件，请选择一个:").arg(csvFiles.size()),
+        displayNames, 0, false, &ok);
+    
+    if (!ok || selected.isEmpty()) {
+        m_statusLabel->setText("已取消选择");
+        return;
+    }
+    
+    // 获取完整路径
+    int selectedIndex = displayNames.indexOf(selected);
+    QString filePath = csvFiles[selectedIndex];
+    
+    AppSettings::instance().addRecentFile(filePath);
+    updateRecentFilesMenu();
+    
+    if (m_csvParser.parseFile(filePath)) {
+        m_currentFilePath = filePath;
         refreshAllCanvases();
         
         QFileInfo fileInfo(filePath);
