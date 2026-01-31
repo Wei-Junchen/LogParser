@@ -47,8 +47,10 @@ set(HEADERS
 )
 
 # WIN32: 在Windows上隐藏控制台窗口，仅显示GUI
+# 同时添加应用程序图标资源
 if(WIN32)
-    add_executable(${PROJECT_NAME} WIN32 ${SOURCES} ${HEADERS})
+    set(APP_ICON_RESOURCE "${CMAKE_SOURCE_DIR}/app.rc")
+    add_executable(${PROJECT_NAME} WIN32 ${SOURCES} ${HEADERS} ${APP_ICON_RESOURCE})
 else()
     add_executable(${PROJECT_NAME} ${SOURCES} ${HEADERS})
 endif()
