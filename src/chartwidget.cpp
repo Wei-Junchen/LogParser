@@ -10,6 +10,12 @@
 #include <cmath>
 #include <limits>
 
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+QT_USE_NAMESPACE
+#else
+QT_CHARTS_USE_NAMESPACE
+#endif
+
 // ==================== ChartWidget ====================
 
 ChartWidget::ChartWidget(QWidget *parent)

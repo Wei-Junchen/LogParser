@@ -4,7 +4,11 @@ setlocal EnableDelayedExpansion
 set "PROJECT_DIR=%~dp0"
 set "BUILD_DIR=%PROJECT_DIR%build-release"
 set "DEPLOY_DIR=%BUILD_DIR%\deploy"
-set "QT_DIR=C:\Users\WJC\anaconda3\Library"
+rem Allow overriding QT_DIR by setting the environment variable before running the script.
+rem If QT_DIR is already defined in the environment, keep it; otherwise fall back to the default.
+if "%QT_DIR%"=="" (
+    set "QT_DIR=C:\Users\WJC\anaconda3\Library"
+)
 set "QT_BIN=%QT_DIR%\bin"
 
 set "BUILD_INSTALLER=0"

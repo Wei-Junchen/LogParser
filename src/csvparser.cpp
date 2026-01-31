@@ -19,7 +19,11 @@ bool CsvParser::parseFile(const QString &filePath)
     }
     
     QTextStream in(&file);
+#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
     in.setCodec("UTF-8");
+#else
+    in.setEncoding(QStringConverter::Utf8);
+#endif
     
     // 读取表头
     if (in.atEnd()) {

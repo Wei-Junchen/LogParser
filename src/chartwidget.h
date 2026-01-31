@@ -15,9 +15,10 @@
 
 #if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
 using namespace Qt;
-#endif
-
+QT_USE_NAMESPACE
+#else
 QT_CHARTS_USE_NAMESPACE
+#endif
 
 // 前向声明
 class InteractiveChartView;

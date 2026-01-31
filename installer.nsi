@@ -70,7 +70,7 @@ Section "LogParser (Required)" SecMain
     SetOutPath $INSTDIR
     
     ; Copy all files from deploy directory
-    File /r "build-release\deploy\*.*"
+    File /r "build-mingw\deploy\*.*"
     
     ; Write registry
     WriteRegStr HKLM "Software\LogParser" "Install_Dir" "$INSTDIR"
