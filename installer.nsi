@@ -1,58 +1,58 @@
 ; ========================================
-; LogParser Windows 安装程序脚本
-; 使用 NSIS (Nullsoft Scriptable Install System)
-; 下载 NSIS: https://nsis.sourceforge.io/
+; LogParser Windows Installer Script
+; NSIS (Nullsoft Scriptable Install System)
+; Download NSIS: https://nsis.sourceforge.io/
 ; ========================================
 
 !include "MUI2.nsh"
 
-; 基本信息
+; Basic Info
 Name "LogParser"
 OutFile "LogParser_Setup.exe"
 InstallDir "$PROGRAMFILES64\LogParser"
 InstallDirRegKey HKLM "Software\LogParser" "Install_Dir"
 RequestExecutionLevel admin
 
-; 界面设置
+; UI Settings
 !define MUI_ABORTWARNING
 !define MUI_ICON "${NSISDIR}\Contrib\Graphics\Icons\modern-install.ico"
 !define MUI_UNICON "${NSISDIR}\Contrib\Graphics\Icons\modern-uninstall.ico"
 
-; 安装页面
+; Install Pages
 !insertmacro MUI_PAGE_WELCOME
 !insertmacro MUI_PAGE_LICENSE "LICENSE"
 !insertmacro MUI_PAGE_DIRECTORY
 !insertmacro MUI_PAGE_INSTFILES
 !insertmacro MUI_PAGE_FINISH
 
-; 卸载页面
+; Uninstall Pages
 !insertmacro MUI_UNPAGE_CONFIRM
 !insertmacro MUI_UNPAGE_INSTFILES
 
-; 语言
+; Languages
 !insertmacro MUI_LANGUAGE "SimpChinese"
 !insertmacro MUI_LANGUAGE "English"
 
 ; ========================================
-; 安装部分
+; Install Section
 ; ========================================
-Section "LogParser (必需)" SecMain
+Section "LogParser (Required)" SecMain
     SectionIn RO
     
     SetOutPath $INSTDIR
     
-    ; 复制所有文件（从 deploy 目录）
+    ; Copy all files from deploy directory
     File /r "build-release\deploy\*.*"
     
-    ; 写入注册表
+    ; Write registry
     WriteRegStr HKLM "Software\LogParser" "Install_Dir" "$INSTDIR"
     
-    ; 创建卸载程序
+    ; Create uninstaller
     WriteUninstaller "$INSTDIR\Uninstall.exe"
     
-    ; 添加到程序列表
+    ; Add to program list
     WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\LogParser" \
-                     "DisplayName" "LogParser - CSV数据可视化工具"
+                     "DisplayName" "LogParser - CSV Data Visualization Tool"
     WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\LogParser" \
                      "UninstallString" '"$INSTDIR\Uninstall.exe"'
     WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\LogParser" \
@@ -67,35 +67,35 @@ Section "LogParser (必需)" SecMain
                       "NoRepair" 1
 SectionEnd
 
-Section "桌面快捷方式" SecDesktop
+Section "Desktop Shortcut" SecDesktop
     CreateShortcut "$DESKTOP\LogParser.lnk" "$INSTDIR\LogParser.exe"
 SectionEnd
 
-Section "开始菜单快捷方式" SecStartMenu
+Section "Start Menu Shortcut" SecStartMenu
     CreateDirectory "$SMPROGRAMS\LogParser"
     CreateShortcut "$SMPROGRAMS\LogParser\LogParser.lnk" "$INSTDIR\LogParser.exe"
-    CreateShortcut "$SMPROGRAMS\LogParser\卸载 LogParser.lnk" "$INSTDIR\Uninstall.exe"
+    CreateShortcut "$SMPROGRAMS\LogParser\Uninstall LogParser.lnk" "$INSTDIR\Uninstall.exe"
 SectionEnd
 
 ; ========================================
-; 卸载部分
+; Uninstall Section
 ; ========================================
 Section "Uninstall"
-    ; 删除注册表项
+    ; Delete registry keys
     DeleteRegKey HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\LogParser"
     DeleteRegKey HKLM "Software\LogParser"
     
-    ; 删除快捷方式
+    ; Delete shortcuts
     Delete "$DESKTOP\LogParser.lnk"
     RMDir /r "$SMPROGRAMS\LogParser"
     
-    ; 删除安装目录
+    ; Delete install directory
     RMDir /r "$INSTDIR"
 SectionEnd
 
-; 组件描述
+; Component Descriptions
 !insertmacro MUI_FUNCTION_DESCRIPTION_BEGIN
-    !insertmacro MUI_DESCRIPTION_TEXT ${SecMain} "LogParser 主程序文件（必需）"
-    !insertmacro MUI_DESCRIPTION_TEXT ${SecDesktop} "在桌面创建快捷方式"
-    !insertmacro MUI_DESCRIPTION_TEXT ${SecStartMenu} "在开始菜单创建快捷方式"
+    !insertmacro MUI_DESCRIPTION_TEXT ${SecMain} "LogParser main program files (required)"
+    !insertmacro MUI_DESCRIPTION_TEXT ${SecDesktop} "Create desktop shortcut"
+    !insertmacro MUI_DESCRIPTION_TEXT ${SecStartMenu} "Create Start Menu shortcuts"
 !insertmacro MUI_FUNCTION_DESCRIPTION_END

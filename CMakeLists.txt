@@ -7,6 +7,11 @@ set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 set(CMAKE_AUTOUIC ON)
 
+# Windows MSVC UTF-8 源文件编码支持
+if(MSVC)
+    add_compile_options(/utf-8)
+endif()
+
 # 查找Qt6，如果没有则尝试Qt5
 find_package(Qt6 COMPONENTS Widgets Charts Qml QUIET)
 if(NOT Qt6_FOUND)
@@ -41,7 +46,12 @@ set(HEADERS
     src/seriesstyledialog.h
 )
 
-add_executable(${PROJECT_NAME} ${SOURCES} ${HEADERS})
+# WIN32: 在Windows上隐藏控制台窗口，仅显示GUI
+if(WIN32)
+    add_executable(${PROJECT_NAME} WIN32 ${SOURCES} ${HEADERS})
+else()
+    add_executable(${PROJECT_NAME} ${SOURCES} ${HEADERS})
+endif()
 
 if(QT_VERSION_MAJOR EQUAL 6)
     target_link_libraries(${PROJECT_NAME} PRIVATE Qt6::Widgets Qt6::Charts Qt6::Qml)
