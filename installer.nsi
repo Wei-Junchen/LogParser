@@ -69,8 +69,32 @@ Section "LogParser (Required)" SecMain
     
     SetOutPath $INSTDIR
     
-    ; Copy all files from deploy directory
-    File /r "build-mingw\deploy\*.*"
+    ; Main executable
+    File "build-release\LogParser.exe"
+    
+    ; Required Qt DLLs
+    File "build-release\Qt6Charts.dll"
+    File "build-release\Qt6Core.dll"
+    File "build-release\Qt6Gui.dll"
+    File "build-release\Qt6Widgets.dll"
+    
+    ; MinGW runtime libraries
+    File "build-release\libgcc_s_seh-1.dll"
+    File "build-release\libstdc++-6.dll"
+    File "build-release\libwinpthread-1.dll"
+    
+    ; Required Qt plugins
+    SetOutPath $INSTDIR\platforms
+    File "build-release\platforms\qwindows.dll"
+    
+    SetOutPath $INSTDIR\styles
+    File "build-release\styles\qmodernwindowsstyle.dll"
+    
+    SetOutPath $INSTDIR\imageformats
+    File "build-release\imageformats\qico.dll"
+    File "build-release\imageformats\qjpeg.dll"
+    
+    SetOutPath $INSTDIR
     
     ; Write registry
     WriteRegStr HKLM "Software\LogParser" "Install_Dir" "$INSTDIR"
