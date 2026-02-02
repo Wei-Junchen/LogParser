@@ -43,6 +43,9 @@ struct SeriesStyle
     // 线宽
     int lineWidth = 2;
     
+    // Y轴分组（多Y轴模式下使用，相同组号的系列共享Y轴）
+    int yAxisGroup = 0;
+    
     /**
      * @brief 序列化为JSON
      */
@@ -54,6 +57,7 @@ struct SeriesStyle
         obj["maxValue"] = maxValue;
         obj["scatterSize"] = scatterSize;
         obj["lineWidth"] = lineWidth;
+        obj["yAxisGroup"] = yAxisGroup;
         return obj;
     }
     
@@ -68,6 +72,7 @@ struct SeriesStyle
         style.maxValue = obj["maxValue"].toDouble(100.0);
         style.scatterSize = obj["scatterSize"].toInt(6);
         style.lineWidth = obj["lineWidth"].toInt(2);
+        style.yAxisGroup = obj["yAxisGroup"].toInt(0);
         return style;
     }
     
@@ -78,7 +83,8 @@ struct SeriesStyle
         return displayMode == SeriesDisplayMode::Line &&
                !filterByRange &&
                scatterSize == 6 &&
-               lineWidth == 2;
+               lineWidth == 2 &&
+               yAxisGroup == 0;
     }
 };
 
@@ -123,6 +129,9 @@ private:
     
     // 线宽设置
     QSpinBox *m_lineWidthSpin;
+    
+    // Y轴分组设置
+    QSpinBox *m_yAxisGroupSpin;
     
     // 分组框
     QGroupBox *m_rangeGroup;

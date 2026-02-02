@@ -49,6 +49,14 @@ struct PlotPreset
     QStringList computedColumns;    // 选中的计算列列表
     QMap<QString, SeriesStyle> seriesStyles;  // 曲线样式设置
     
+    // 视图设置
+    bool multiAxisMode = false;     // 多Y轴模式
+    double xMin = 0.0;              // X轴范围
+    double xMax = 1.0;
+    double yMin = 0.0;              // Y轴范围（单Y轴模式）
+    double yMax = 1.0;
+    bool hasViewState = false;      // 是否保存了视图状态
+    
     QJsonObject toJson() const {
         QJsonObject obj;
         obj["name"] = name;
@@ -62,6 +70,17 @@ struct PlotPreset
             stylesObj[it.key()] = it.value().toJson();
         }
         obj["seriesStyles"] = stylesObj;
+        
+        // 保存视图设置
+        obj["multiAxisMode"] = multiAxisMode;
+        if (hasViewState) {
+            QJsonObject viewState;
+            viewState["xMin"] = xMin;
+            viewState["xMax"] = xMax;
+            viewState["yMin"] = yMin;
+            viewState["yMax"] = yMax;
+            obj["viewState"] = viewState;
+        }
         
         return obj;
     }
@@ -83,6 +102,17 @@ struct PlotPreset
         QJsonObject stylesObj = obj["seriesStyles"].toObject();
         for (auto it = stylesObj.constBegin(); it != stylesObj.constEnd(); ++it) {
             preset.seriesStyles[it.key()] = SeriesStyle::fromJson(it.value().toObject());
+        }
+        
+        // 加载视图设置
+        preset.multiAxisMode = obj["multiAxisMode"].toBool(false);
+        if (obj.contains("viewState")) {
+            QJsonObject viewState = obj["viewState"].toObject();
+            preset.hasViewState = true;
+            preset.xMin = viewState["xMin"].toDouble(0.0);
+            preset.xMax = viewState["xMax"].toDouble(1.0);
+            preset.yMin = viewState["yMin"].toDouble(0.0);
+            preset.yMax = viewState["yMax"].toDouble(1.0);
         }
         
         return preset;

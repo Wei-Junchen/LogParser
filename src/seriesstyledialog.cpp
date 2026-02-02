@@ -75,6 +75,22 @@ void SeriesStyleDialog::setupUi()
     
     mainLayout->addWidget(m_rangeGroup);
     
+    // ========== Y轴分组 ==========
+    QGroupBox *axisGroup = new QGroupBox("Y轴分组（多Y轴模式）");
+    QFormLayout *axisLayout = new QFormLayout(axisGroup);
+    
+    m_yAxisGroupSpin = new QSpinBox();
+    m_yAxisGroupSpin->setRange(0, 9);
+    m_yAxisGroupSpin->setValue(0);
+    m_yAxisGroupSpin->setToolTip("相同组号的系列将共享同一个Y轴\n组号0-9，默认每个系列独立Y轴（自动分配）");
+    axisLayout->addRow("Y轴组号:", m_yAxisGroupSpin);
+    
+    QLabel *axisHint = new QLabel("相同组号的曲线共享Y轴，0表示独立");
+    axisHint->setStyleSheet("color: gray; font-size: 10px;");
+    axisLayout->addRow("", axisHint);
+    
+    mainLayout->addWidget(axisGroup);
+    
     // ========== 按钮 ==========
     mainLayout->addSpacing(10);
     
@@ -116,6 +132,9 @@ void SeriesStyleDialog::applyStyle(const SeriesStyle &style)
     m_rangeGroup->setChecked(style.filterByRange);
     m_minValueSpin->setValue(style.minValue);
     m_maxValueSpin->setValue(style.maxValue);
+    
+    // 设置Y轴分组
+    m_yAxisGroupSpin->setValue(style.yAxisGroup);
 }
 
 SeriesStyle SeriesStyleDialog::getStyle() const
@@ -129,6 +148,7 @@ SeriesStyle SeriesStyleDialog::getStyle() const
     style.filterByRange = m_rangeGroup->isChecked();
     style.minValue = m_minValueSpin->value();
     style.maxValue = m_maxValueSpin->value();
+    style.yAxisGroup = m_yAxisGroupSpin->value();
     
     return style;
 }

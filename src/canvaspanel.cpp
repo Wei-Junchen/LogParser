@@ -110,10 +110,11 @@ void CanvasPanel::refreshColumnList()
         item->setData(Qt::UserRole + 1, false);  // 标记为非计算列
         
         if (!isNumeric) {
-            item->setForeground(Qt::gray);
+            item->setForeground(palette().color(QPalette::Disabled, QPalette::Text));
             item->setToolTip("非数值列，无法用于绘图");
             item->setFlags(item->flags() & ~Qt::ItemIsEnabled);
         } else {
+            item->setForeground(palette().color(QPalette::Active, QPalette::Text));
             item->setToolTip("点击添加到图表 / 再次点击移除");
             // 恢复之前的选中状态
             if (previousSelectedColumns.contains(i)) {
@@ -143,7 +144,9 @@ void CanvasPanel::refreshColumnList()
         } else {
             item->setCheckState(Qt::Unchecked);
         }
-        item->setForeground(QColor(0, 128, 0));  // 绿色显示计算列
+        // 使用系统主题的链接颜色或高亮色来显示计算列
+        QColor computedColor = palette().color(QPalette::Active, QPalette::Link);
+        item->setForeground(computedColor);
         m_columnListWidget->addItem(item);
         
         // 添加计算列到X轴下拉框
@@ -400,7 +403,7 @@ void CanvasPanel::updateYAxisAvailability()
         if (isXAxisColumn) {
             // X轴使用的列，禁用并取消选中
             item->setFlags(item->flags() & ~Qt::ItemIsEnabled);
-            item->setForeground(Qt::gray);
+            item->setForeground(palette().color(QPalette::Disabled, QPalette::Text));
             item->setToolTip("该列已被用作X轴，无法作为Y轴");
             
             // 如果之前选中了，需要取消选中
@@ -420,10 +423,11 @@ void CanvasPanel::updateYAxisAvailability()
             // 恢复可用状态
             item->setFlags(item->flags() | Qt::ItemIsEnabled);
             if (isComputed) {
-                item->setForeground(QColor(0, 128, 0));  // 绿色
+                QColor computedColor = palette().color(QPalette::Active, QPalette::Link);
+                item->setForeground(computedColor);
                 item->setToolTip("计算列: " + itemName + " (点击添加/移除)");
             } else {
-                item->setForeground(Qt::black);
+                item->setForeground(palette().color(QPalette::Active, QPalette::Text));
                 item->setToolTip("点击添加到图表 / 再次点击移除");
             }
         }
@@ -458,6 +462,15 @@ PlotPreset CanvasPanel::getPreset() const
     
     // 保存曲线样式
     preset.seriesStyles = m_seriesStyles;
+    
+    // 保存多Y轴模式
+    preset.multiAxisMode = m_chart->isMultiAxisMode();
+    
+    // 保存视图状态
+    if (!m_selectedColumns.isEmpty() || !m_selectedComputedColumns.isEmpty()) {
+        preset.hasViewState = true;
+        m_chart->getViewRange(preset.xMin, preset.xMax, preset.yMin, preset.yMax);
+    }
     
     return preset;
 }
@@ -540,8 +553,16 @@ void CanvasPanel::applyPreset(const PlotPreset &preset)
         }
     }
     
+    // 恢复多Y轴模式（在更新图表之前设置）
+    m_chart->setMultiAxisMode(preset.multiAxisMode);
+    
     // 更新图表
     updateChart();
+    
+    // 恢复视图状态（在图表更新之后）
+    if (preset.hasViewState) {
+        m_chart->setViewRange(preset.xMin, preset.xMax, preset.yMin, preset.yMax);
+    }
 }
 
 void CanvasPanel::addComputedColumn(const QString &name, const QVector<double> &data)

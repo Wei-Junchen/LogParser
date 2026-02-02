@@ -23,6 +23,7 @@ ChartWidget::ChartWidget(QWidget *parent)
     , m_seriesCount(0)
     , m_originalXMin(0), m_originalXMax(1)
     , m_originalYMin(0), m_originalYMax(1)
+    , m_multiAxisMode(false)
 {
     m_layout = new QVBoxLayout(this);
     m_layout->setContentsMargins(0, 0, 0, 0);
@@ -67,16 +68,44 @@ void ChartWidget::setupToolbar()
     // 放大按钮
     m_zoomInBtn = new QToolButton();
     m_zoomInBtn->setText("🔍+");
-    m_zoomInBtn->setToolTip("放大 (Ctrl+滚轮向上)");
+    m_zoomInBtn->setToolTip("整体放大 (X和Y轴)");
     m_zoomInBtn->setFixedSize(32, 28);
     connect(m_zoomInBtn, &QToolButton::clicked, this, &ChartWidget::zoomIn);
     
     // 缩小按钮
     m_zoomOutBtn = new QToolButton();
     m_zoomOutBtn->setText("🔍-");
-    m_zoomOutBtn->setToolTip("缩小 (Ctrl+滚轮向下)");
+    m_zoomOutBtn->setToolTip("整体缩小 (X和Y轴)");
     m_zoomOutBtn->setFixedSize(32, 28);
     connect(m_zoomOutBtn, &QToolButton::clicked, this, &ChartWidget::zoomOut);
+    
+    // X轴放大按钮
+    m_zoomInXBtn = new QToolButton();
+    m_zoomInXBtn->setText("X+");
+    m_zoomInXBtn->setToolTip("X轴放大");
+    m_zoomInXBtn->setFixedSize(32, 28);
+    connect(m_zoomInXBtn, &QToolButton::clicked, this, &ChartWidget::zoomInX);
+    
+    // X轴缩小按钮
+    m_zoomOutXBtn = new QToolButton();
+    m_zoomOutXBtn->setText("X-");
+    m_zoomOutXBtn->setToolTip("X轴缩小");
+    m_zoomOutXBtn->setFixedSize(32, 28);
+    connect(m_zoomOutXBtn, &QToolButton::clicked, this, &ChartWidget::zoomOutX);
+    
+    // Y轴放大按钮
+    m_zoomInYBtn = new QToolButton();
+    m_zoomInYBtn->setText("Y+");
+    m_zoomInYBtn->setToolTip("Y轴放大");
+    m_zoomInYBtn->setFixedSize(32, 28);
+    connect(m_zoomInYBtn, &QToolButton::clicked, this, &ChartWidget::zoomInY);
+    
+    // Y轴缩小按钮
+    m_zoomOutYBtn = new QToolButton();
+    m_zoomOutYBtn->setText("Y-");
+    m_zoomOutYBtn->setToolTip("Y轴缩小");
+    m_zoomOutYBtn->setFixedSize(32, 28);
+    connect(m_zoomOutYBtn, &QToolButton::clicked, this, &ChartWidget::zoomOutY);
     
     // 重置按钮
     m_zoomResetBtn = new QToolButton();
@@ -88,6 +117,13 @@ void ChartWidget::setupToolbar()
     toolLayout->addWidget(new QLabel("缩放:"));
     toolLayout->addWidget(m_zoomInBtn);
     toolLayout->addWidget(m_zoomOutBtn);
+    toolLayout->addWidget(new QLabel("|"));
+    toolLayout->addWidget(m_zoomInXBtn);
+    toolLayout->addWidget(m_zoomOutXBtn);
+    toolLayout->addWidget(new QLabel("|"));
+    toolLayout->addWidget(m_zoomInYBtn);
+    toolLayout->addWidget(m_zoomOutYBtn);
+    toolLayout->addWidget(new QLabel("|"));
     toolLayout->addWidget(m_zoomResetBtn);
     
     // 分隔符
@@ -95,6 +131,55 @@ void ChartWidget::setupToolbar()
     separator->setFrameShape(QFrame::VLine);
     separator->setFrameShadow(QFrame::Sunken);
     toolLayout->addWidget(separator);
+    
+    // 多Y轴模式复选框
+    m_multiAxisCheckBox = new QCheckBox("多-Y轴模式");
+    m_multiAxisCheckBox->setToolTip("为每个数据系列使用独立的Y轴，\n适用于数值范围差异很大的数据");
+    m_multiAxisCheckBox->setChecked(false);
+    connect(m_multiAxisCheckBox, &QCheckBox::toggled, this, [this](bool checked) {
+        m_multiAxisMode = checked;
+        // 重新绘制图表
+        // 保存当前数据
+        QList<QPair<QString, QPair<QList<QPointF>, QPair<QColor, SeriesStyle>>>> seriesData;
+        for (QAbstractSeries *abstractSeries : m_chart->series()) {
+            QLineSeries *lineSeries = qobject_cast<QLineSeries*>(abstractSeries);
+            QScatterSeries *scatterSeries = qobject_cast<QScatterSeries*>(abstractSeries);
+            
+            if (lineSeries && !lineSeries->name().endsWith(" (点)")) {
+                QList<QPointF> points = lineSeries->points();
+                QColor color = lineSeries->color();
+                SeriesStyle style;
+                style.displayMode = SeriesDisplayMode::Line;
+                style.lineWidth = lineSeries->pen().width();
+                seriesData.append(qMakePair(lineSeries->name(), qMakePair(points, qMakePair(color, style))));
+            } else if (scatterSeries && !scatterSeries->name().endsWith(" (点)")) {
+                QList<QPointF> points = scatterSeries->points();
+                QColor color = scatterSeries->color();
+                SeriesStyle style;
+                style.displayMode = SeriesDisplayMode::Scatter;
+                style.scatterSize = scatterSeries->markerSize();
+                seriesData.append(qMakePair(scatterSeries->name(), qMakePair(points, qMakePair(color, style))));
+            }
+        }
+        
+        // 清除并重新添加
+        clearChart();
+        for (const auto &data : seriesData) {
+            QVector<double> xData, yData;
+            for (const QPointF &p : data.second.first) {
+                xData.append(p.x());
+                yData.append(p.y());
+            }
+            addSeries(data.first, xData, yData, data.second.second.first, data.second.second.second);
+        }
+    });
+    toolLayout->addWidget(m_multiAxisCheckBox);
+    
+    // 分隔符
+    QFrame *separator2 = new QFrame();
+    separator2->setFrameShape(QFrame::VLine);
+    separator2->setFrameShadow(QFrame::Sunken);
+    toolLayout->addWidget(separator2);
     
     // 标记按钮
     m_markerBtn = new QToolButton();
@@ -145,6 +230,46 @@ void ChartWidget::addSeries(const QString &name,
     // 确定使用的颜色
     QColor seriesColor = color.isValid() ? color : getNextColor();
     
+    // 确定使用的Y轴
+    QValueAxis *yAxisToUse = m_axisY;
+    if (m_multiAxisMode) {
+        // 多Y轴模式：根据Y轴分组决定是否共享Y轴
+        int groupId = style.yAxisGroup;
+        
+        if (groupId == 0) {
+            // 组号为0表示独立Y轴，为每个系列创建新的Y轴
+            yAxisToUse = new QValueAxis();
+            yAxisToUse->setTitleText(name);
+            yAxisToUse->setLinePenColor(seriesColor);
+            yAxisToUse->setLabelsColor(seriesColor);
+            
+            // 交替使用左右两侧
+            Qt::Alignment alignment = (m_seriesCount % 2 == 0) ? Qt::AlignLeft : Qt::AlignRight;
+            m_chart->addAxis(yAxisToUse, alignment);
+            
+            m_extraYAxes.append(yAxisToUse);
+        } else {
+            // 非0组号：查找是否已有相同组号的Y轴
+            if (m_yAxisGroups.contains(groupId)) {
+                // 使用已存在的组Y轴
+                yAxisToUse = m_yAxisGroups[groupId];
+            } else {
+                // 创建新的组Y轴
+                yAxisToUse = new QValueAxis();
+                yAxisToUse->setTitleText(QString("[组%1] %2").arg(groupId).arg(name));
+                yAxisToUse->setLinePenColor(seriesColor);
+                yAxisToUse->setLabelsColor(seriesColor);
+                
+                // 交替使用左右两侧
+                Qt::Alignment alignment = (m_yAxisGroups.size() % 2 == 0) ? Qt::AlignLeft : Qt::AlignRight;
+                m_chart->addAxis(yAxisToUse, alignment);
+                
+                m_extraYAxes.append(yAxisToUse);
+                m_yAxisGroups[groupId] = yAxisToUse;
+            }
+        }
+    }
+    
     // 根据显示模式创建不同类型的Series
     switch (style.displayMode) {
         case SeriesDisplayMode::Line: {
@@ -164,7 +289,7 @@ void ChartWidget::addSeries(const QString &name,
             
             m_chart->addSeries(series);
             series->attachAxis(m_axisX);
-            series->attachAxis(m_axisY);
+            series->attachAxis(yAxisToUse);
             break;
         }
         
@@ -184,7 +309,7 @@ void ChartWidget::addSeries(const QString &name,
             
             m_chart->addSeries(series);
             series->attachAxis(m_axisX);
-            series->attachAxis(m_axisY);
+            series->attachAxis(yAxisToUse);
             break;
         }
         
@@ -206,7 +331,7 @@ void ChartWidget::addSeries(const QString &name,
             
             m_chart->addSeries(lineSeries);
             lineSeries->attachAxis(m_axisX);
-            lineSeries->attachAxis(m_axisY);
+            lineSeries->attachAxis(yAxisToUse);
             
             // 再添加散点（不显示在图例中）
             QScatterSeries *scatterSeries = new QScatterSeries();
@@ -223,7 +348,7 @@ void ChartWidget::addSeries(const QString &name,
             
             m_chart->addSeries(scatterSeries);
             scatterSeries->attachAxis(m_axisX);
-            scatterSeries->attachAxis(m_axisY);
+            scatterSeries->attachAxis(yAxisToUse);
             
             // 隐藏散点的图例
             m_chart->legend()->markers(scatterSeries).first()->setVisible(false);
@@ -249,6 +374,16 @@ void ChartWidget::addSeries(const QString &name,
     
     m_markerInfos.append(markerInfo);
     
+    // 保存系列轴信息
+    if (m_multiAxisMode) {
+        SeriesAxisInfo axisInfo;
+        axisInfo.seriesName = name;
+        axisInfo.yAxis = yAxisToUse;
+        axisInfo.yMin = markerInfo.yMin;
+        axisInfo.yMax = markerInfo.yMax;
+        m_seriesAxisInfos.append(axisInfo);
+    }
+    
     m_seriesCount++;
     
     // 更新坐标轴范围
@@ -261,38 +396,89 @@ void ChartWidget::updateAxisRanges()
         return;
     }
     
-    double xMin = std::numeric_limits<double>::max();
-    double xMax = std::numeric_limits<double>::lowest();
-    double yMin = std::numeric_limits<double>::max();
-    double yMax = std::numeric_limits<double>::lowest();
-    
-    for (QAbstractSeries *abstractSeries : m_chart->series()) {
-        QLineSeries *series = qobject_cast<QLineSeries*>(abstractSeries);
-        if (!series) continue;
+    if (m_multiAxisMode) {
+        // 多Y轴模式：为每个Y轴单独设置范围
+        double xMin = std::numeric_limits<double>::max();
+        double xMax = std::numeric_limits<double>::lowest();
         
-        for (const QPointF &point : series->points()) {
-            xMin = qMin(xMin, point.x());
-            xMax = qMax(xMax, point.x());
-            yMin = qMin(yMin, point.y());
-            yMax = qMax(yMax, point.y());
+        // 计算X轴范围
+        for (QAbstractSeries *abstractSeries : m_chart->series()) {
+            QLineSeries *lineSeries = qobject_cast<QLineSeries*>(abstractSeries);
+            QScatterSeries *scatterSeries = qobject_cast<QScatterSeries*>(abstractSeries);
+            
+            if (lineSeries) {
+                for (const QPointF &point : lineSeries->points()) {
+                    xMin = qMin(xMin, point.x());
+                    xMax = qMax(xMax, point.x());
+                }
+            } else if (scatterSeries) {
+                for (const QPointF &point : scatterSeries->points()) {
+                    xMin = qMin(xMin, point.x());
+                    xMax = qMax(xMax, point.x());
+                }
+            }
         }
+        
+        double xMargin = (xMax - xMin) * 0.02;
+        if (xMargin == 0) xMargin = 1;
+        m_axisX->setRange(xMin - xMargin, xMax + xMargin);
+        m_originalXMin = xMin - xMargin;
+        m_originalXMax = xMax + xMargin;
+        
+        // 为每个独立的Y轴设置范围
+        for (const SeriesAxisInfo &axisInfo : m_seriesAxisInfos) {
+            double yMin = axisInfo.yMin;
+            double yMax = axisInfo.yMax;
+            double yMargin = (yMax - yMin) * 0.05;
+            if (yMargin == 0) yMargin = qAbs(yMin) * 0.1;
+            if (yMargin == 0) yMargin = 1;
+            
+            axisInfo.yAxis->setRange(yMin - yMargin, yMax + yMargin);
+        }
+    } else {
+        // 单Y轴模式：所有系列使用相同的Y轴范围
+        double xMin = std::numeric_limits<double>::max();
+        double xMax = std::numeric_limits<double>::lowest();
+        double yMin = std::numeric_limits<double>::max();
+        double yMax = std::numeric_limits<double>::lowest();
+        
+        for (QAbstractSeries *abstractSeries : m_chart->series()) {
+            QLineSeries *lineSeries = qobject_cast<QLineSeries*>(abstractSeries);
+            QScatterSeries *scatterSeries = qobject_cast<QScatterSeries*>(abstractSeries);
+            
+            if (lineSeries) {
+                for (const QPointF &point : lineSeries->points()) {
+                    xMin = qMin(xMin, point.x());
+                    xMax = qMax(xMax, point.x());
+                    yMin = qMin(yMin, point.y());
+                    yMax = qMax(yMax, point.y());
+                }
+            } else if (scatterSeries) {
+                for (const QPointF &point : scatterSeries->points()) {
+                    xMin = qMin(xMin, point.x());
+                    xMax = qMax(xMax, point.x());
+                    yMin = qMin(yMin, point.y());
+                    yMax = qMax(yMax, point.y());
+                }
+            }
+        }
+        
+        // 添加一点边距
+        double xMargin = (xMax - xMin) * 0.02;
+        double yMargin = (yMax - yMin) * 0.05;
+        
+        if (xMargin == 0) xMargin = 1;
+        if (yMargin == 0) yMargin = 1;
+        
+        m_axisX->setRange(xMin - xMargin, xMax + xMargin);
+        m_axisY->setRange(yMin - yMargin, yMax + yMargin);
+        
+        // 保存原始范围用于重置
+        m_originalXMin = xMin - xMargin;
+        m_originalXMax = xMax + xMargin;
+        m_originalYMin = yMin - yMargin;
+        m_originalYMax = yMax + yMargin;
     }
-    
-    // 添加一点边距
-    double xMargin = (xMax - xMin) * 0.02;
-    double yMargin = (yMax - yMin) * 0.05;
-    
-    if (xMargin == 0) xMargin = 1;
-    if (yMargin == 0) yMargin = 1;
-    
-    m_axisX->setRange(xMin - xMargin, xMax + xMargin);
-    m_axisY->setRange(yMin - yMargin, yMax + yMargin);
-    
-    // 保存原始范围用于重置
-    m_originalXMin = xMin - xMargin;
-    m_originalXMax = xMax + xMargin;
-    m_originalYMin = yMin - yMargin;
-    m_originalYMax = yMax + yMargin;
 }
 
 void ChartWidget::clearChart()
@@ -300,6 +486,16 @@ void ChartWidget::clearChart()
     clearMarkerLines();
     m_markerInfos.clear();
     m_chart->removeAllSeries();
+    
+    // 清除额外的Y轴
+    for (QValueAxis *axis : m_extraYAxes) {
+        m_chart->removeAxis(axis);
+        delete axis;
+    }
+    m_extraYAxes.clear();
+    m_seriesAxisInfos.clear();
+    m_yAxisGroups.clear();  // 清除Y轴组映射
+    
     m_seriesCount = 0;
     
     m_axisX->setRange(0, 1);
@@ -337,6 +533,32 @@ bool ChartWidget::saveAsImage(const QString &filePath)
     return pixmap.save(filePath);
 }
 
+void ChartWidget::setMultiAxisMode(bool enabled)
+{
+    if (m_multiAxisMode == enabled) {
+        return;
+    }
+    
+    // 通过触发复选框来切换模式（这样可以重用现有的切换逻辑）
+    m_multiAxisCheckBox->setChecked(enabled);
+}
+
+void ChartWidget::getViewRange(double &xMin, double &xMax, double &yMin, double &yMax) const
+{
+    xMin = m_axisX->min();
+    xMax = m_axisX->max();
+    yMin = m_axisY->min();
+    yMax = m_axisY->max();
+}
+
+void ChartWidget::setViewRange(double xMin, double xMax, double yMin, double yMax)
+{
+    m_axisX->setRange(xMin, xMax);
+    if (!m_multiAxisMode) {
+        m_axisY->setRange(yMin, yMax);
+    }
+}
+
 void ChartWidget::zoomIn()
 {
     m_chart->zoomIn();
@@ -347,10 +569,88 @@ void ChartWidget::zoomOut()
     m_chart->zoomOut();
 }
 
+void ChartWidget::zoomInX()
+{
+    double xMin = m_axisX->min();
+    double xMax = m_axisX->max();
+    double xCenter = (xMin + xMax) / 2.0;
+    double xRange = (xMax - xMin) * 0.8 / 2.0;
+    
+    m_axisX->setRange(xCenter - xRange, xCenter + xRange);
+}
+
+void ChartWidget::zoomOutX()
+{
+    double xMin = m_axisX->min();
+    double xMax = m_axisX->max();
+    double xCenter = (xMin + xMax) / 2.0;
+    double xRange = (xMax - xMin) * 1.25 / 2.0;
+    
+    m_axisX->setRange(xCenter - xRange, xCenter + xRange);
+}
+
+void ChartWidget::zoomInY()
+{
+    if (m_multiAxisMode) {
+        // 多Y轴模式：缩放所有Y轴
+        for (const SeriesAxisInfo &axisInfo : m_seriesAxisInfos) {
+            double yMin = axisInfo.yAxis->min();
+            double yMax = axisInfo.yAxis->max();
+            double yCenter = (yMin + yMax) / 2.0;
+            double yRange = (yMax - yMin) * 0.8 / 2.0;
+            
+            axisInfo.yAxis->setRange(yCenter - yRange, yCenter + yRange);
+        }
+    } else {
+        double yMin = m_axisY->min();
+        double yMax = m_axisY->max();
+        double yCenter = (yMin + yMax) / 2.0;
+        double yRange = (yMax - yMin) * 0.8 / 2.0;
+        
+        m_axisY->setRange(yCenter - yRange, yCenter + yRange);
+    }
+}
+
+void ChartWidget::zoomOutY()
+{
+    if (m_multiAxisMode) {
+        // 多Y轴模式：缩放所有Y轴
+        for (const SeriesAxisInfo &axisInfo : m_seriesAxisInfos) {
+            double yMin = axisInfo.yAxis->min();
+            double yMax = axisInfo.yAxis->max();
+            double yCenter = (yMin + yMax) / 2.0;
+            double yRange = (yMax - yMin) * 1.25 / 2.0;
+            
+            axisInfo.yAxis->setRange(yCenter - yRange, yCenter + yRange);
+        }
+    } else {
+        double yMin = m_axisY->min();
+        double yMax = m_axisY->max();
+        double yCenter = (yMin + yMax) / 2.0;
+        double yRange = (yMax - yMin) * 1.25 / 2.0;
+        
+        m_axisY->setRange(yCenter - yRange, yCenter + yRange);
+    }
+}
+
 void ChartWidget::zoomReset()
 {
     m_axisX->setRange(m_originalXMin, m_originalXMax);
-    m_axisY->setRange(m_originalYMin, m_originalYMax);
+    
+    if (m_multiAxisMode) {
+        // 多Y轴模式：重置每个Y轴
+        for (const SeriesAxisInfo &axisInfo : m_seriesAxisInfos) {
+            double yMin = axisInfo.yMin;
+            double yMax = axisInfo.yMax;
+            double yMargin = (yMax - yMin) * 0.05;
+            if (yMargin == 0) yMargin = qAbs(yMin) * 0.1;
+            if (yMargin == 0) yMargin = 1;
+            
+            axisInfo.yAxis->setRange(yMin - yMargin, yMax + yMargin);
+        }
+    } else {
+        m_axisY->setRange(m_originalYMin, m_originalYMax);
+    }
 }
 
 QColor ChartWidget::getNextColor()
@@ -745,10 +1045,13 @@ void InteractiveChartView::wheelEvent(QWheelEvent *event)
     // 获取鼠标位置对应的图表坐标
 #if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
     QPointF mousePos = event->position();
+    Qt::KeyboardModifiers modifiers = event->modifiers();
 #elif QT_VERSION >= QT_VERSION_CHECK(5, 14, 0)
     QPointF mousePos = event->position();
+    Qt::KeyboardModifiers modifiers = event->modifiers();
 #else
     QPointF mousePos = event->posF();
+    Qt::KeyboardModifiers modifiers = event->modifiers();
 #endif
     QPointF chartPos = chart()->mapToValue(mousePos.toPoint());
     
@@ -757,6 +1060,13 @@ void InteractiveChartView::wheelEvent(QWheelEvent *event)
     double xMax = m_axisX->max();
     double yMin = m_axisY->min();
     double yMax = m_axisY->max();
+    
+    // 判断缩放模式：
+    // Shift键：只缩放Y轴
+    // Ctrl键：只缩放X轴
+    // 无修饰键：同时缩放X和Y轴
+    bool zoomX = !(modifiers & Qt::ShiftModifier);
+    bool zoomY = !(modifiers & Qt::ControlModifier);
     
     // 以鼠标位置为中心进行缩放
     double xRange = (xMax - xMin) * factor;
@@ -771,8 +1081,12 @@ void InteractiveChartView::wheelEvent(QWheelEvent *event)
     double newYMin = chartPos.y() - yRange * yRatio;
     double newYMax = chartPos.y() + yRange * (1 - yRatio);
     
-    m_axisX->setRange(newXMin, newXMax);
-    m_axisY->setRange(newYMin, newYMax);
+    if (zoomX) {
+        m_axisX->setRange(newXMin, newXMax);
+    }
+    if (zoomY) {
+        m_axisY->setRange(newYMin, newYMax);
+    }
     
     event->accept();
 }

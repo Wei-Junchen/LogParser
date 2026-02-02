@@ -24,6 +24,16 @@ QT_CHARTS_USE_NAMESPACE
 class InteractiveChartView;
 
 /**
+ * @brief 系列Y轴信息
+ */
+struct SeriesAxisInfo {
+    QString seriesName;
+    QValueAxis *yAxis;  // 该系列使用的Y轴
+    double yMin;
+    double yMax;
+};
+
+/**
  * @brief 曲线统计标记信息
  */
 struct SeriesMarkerInfo {
@@ -100,11 +110,35 @@ public:
      * @brief 保存图表为图片
      */
     bool saveAsImage(const QString &filePath);
+    
+    /**
+     * @brief 获取/设置多Y轴模式
+     */
+    bool isMultiAxisMode() const { return m_multiAxisMode; }
+    void setMultiAxisMode(bool enabled);
+    
+    /**
+     * @brief 获取当前视图范围
+     */
+    void getViewRange(double &xMin, double &xMax, double &yMin, double &yMax) const;
+    
+    /**
+     * @brief 设置视图范围
+     */
+    void setViewRange(double xMin, double xMax, double yMin, double yMax);
 
 public slots:
     void zoomIn();
     void zoomOut();
     void zoomReset();
+    
+    // X轴独立缩放
+    void zoomInX();
+    void zoomOutX();
+    
+    // Y轴独立缩放
+    void zoomInY();
+    void zoomOutY();
     
     /**
      * @brief 显示标记设置对话框
@@ -130,13 +164,24 @@ private:
     QToolButton *m_zoomInBtn;
     QToolButton *m_zoomOutBtn;
     QToolButton *m_zoomResetBtn;
+    QToolButton *m_zoomInXBtn;   // X轴放大
+    QToolButton *m_zoomOutXBtn;  // X轴缩小
+    QToolButton *m_zoomInYBtn;   // Y轴放大
+    QToolButton *m_zoomOutYBtn;  // Y轴缩小
     QToolButton *m_markerBtn;
+    QCheckBox *m_multiAxisCheckBox;  // 多Y轴模式开关
     
     int m_seriesCount;
     
     // 原始坐标轴范围
     double m_originalXMin, m_originalXMax;
     double m_originalYMin, m_originalYMax;
+    
+    // 多Y轴模式
+    bool m_multiAxisMode;
+    QList<SeriesAxisInfo> m_seriesAxisInfos;  // 每个系列的Y轴信息
+    QList<QValueAxis*> m_extraYAxes;  // 额外的Y轴列表
+    QMap<int, QValueAxis*> m_yAxisGroups;  // Y轴组映射（组号 -> Y轴）
     
     // 曲线标记信息
     QList<SeriesMarkerInfo> m_markerInfos;
