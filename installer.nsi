@@ -49,6 +49,7 @@ BrandingText "${APP_NAME} v${APP_VERSION} - ${APP_PUBLISHER}"
 ; Install Pages
 !insertmacro MUI_PAGE_WELCOME
 !insertmacro MUI_PAGE_LICENSE "LICENSE"
+!insertmacro MUI_PAGE_COMPONENTS
 !insertmacro MUI_PAGE_DIRECTORY
 !insertmacro MUI_PAGE_INSTFILES
 !insertmacro MUI_PAGE_FINISH
@@ -70,29 +71,44 @@ Section "LogParser (Required)" SecMain
     SetOutPath $INSTDIR
     
     ; Main executable
-    File "build-release\LogParser.exe"
+    File "build-mingw\deploy\LogParser.exe"
     
-    ; Required Qt DLLs
-    File "build-release\Qt6Charts.dll"
-    File "build-release\Qt6Core.dll"
-    File "build-release\Qt6Gui.dll"
-    File "build-release\Qt6Widgets.dll"
+    ; Core Qt DLLs
+    File "build-mingw\deploy\Qt6Core.dll"
+    File "build-mingw\deploy\Qt6Gui.dll"
+    File "build-mingw\deploy\Qt6Widgets.dll"
+    
+    ; Additional Qt modules
+    File "build-mingw\deploy\Qt6Charts.dll"
+    File "build-mingw\deploy\Qt6Qml.dll"
+    File "build-mingw\deploy\Qt6QmlModels.dll"
+    File "build-mingw\deploy\Qt6OpenGL.dll"
+    File "build-mingw\deploy\Qt6OpenGLWidgets.dll"
+    File "build-mingw\deploy\Qt6Network.dll"
+    File "build-mingw\deploy\Qt6Sql.dll"
+    File "build-mingw\deploy\Qt6Concurrent.dll"
+    File /nonfatal "build-mingw\deploy\Qt6SerialPort.dll"
     
     ; MinGW runtime libraries
-    File "build-release\libgcc_s_seh-1.dll"
-    File "build-release\libstdc++-6.dll"
-    File "build-release\libwinpthread-1.dll"
+    File "build-mingw\deploy\libgcc_s_seh-1.dll"
+    File "build-mingw\deploy\libstdc++-6.dll"
+    File "build-mingw\deploy\libwinpthread-1.dll"
     
-    ; Required Qt plugins
+    ; Qt plugins - platforms
     SetOutPath $INSTDIR\platforms
-    File "build-release\platforms\qwindows.dll"
+    File /nonfatal "build-mingw\deploy\platforms\qwindows.dll"
     
+    ; Qt plugins - styles
     SetOutPath $INSTDIR\styles
-    File "build-release\styles\qmodernwindowsstyle.dll"
+    File /nonfatal "build-mingw\deploy\styles\*.dll"
     
+    ; Qt plugins - imageformats
     SetOutPath $INSTDIR\imageformats
-    File "build-release\imageformats\qico.dll"
-    File "build-release\imageformats\qjpeg.dll"
+    File /nonfatal "build-mingw\deploy\imageformats\*.dll"
+    
+    ; QML modules
+    SetOutPath $INSTDIR\qml
+    File /nonfatal /r "build-mingw\deploy\qml\*.*"
     
     SetOutPath $INSTDIR
     

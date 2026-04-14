@@ -17,6 +17,7 @@ $deployDir = Join-Path $buildDir "deploy"
 $qtDir = "C:\Qt\6.5.3\mingw_64"
 $mingwDir = "C:\Qt\Tools\mingw1120_64"
 $nsis = "C:\Program Files (x86)\NSIS\makensis.exe"
+$windeployqt = Join-Path $qtDir "bin\windeployqt.exe"
 
 # Clean only
 if ($Clean) {
@@ -34,11 +35,63 @@ if (-not (Test-Path $nsis)) {
     exit 1
 }
 
-# Check build
+# Check windeployqt
+if (-not (Test-Path $windeployqt)) {
+    Write-Host "[ERROR] windeployqt not found at $windeployqt" -ForegroundColor Red
+    Write-Host "Please check your Qt installation path in package.ps1" -ForegroundColor Yellow
+    exit 1
+}
+
+# Check and build if needed
 $exePath = Join-Path $buildDir "LogParser.exe"
 if (-not (Test-Path $exePath)) {
-    Write-Host "[ERROR] LogParser.exe not found in $buildDir" -ForegroundColor Red
-    Write-Host "Please build the project first!" -ForegroundColor Yellow
+    Write-Host "[WARNING] LogParser.exe not found, building now..." -ForegroundColor Yellow
+    
+    # Check if CMake is available
+    $cmake = Get-Command cmake -ErrorAction SilentlyContinue
+    if (-not $cmake) {
+        Write-Host "[ERROR] CMake not found in PATH" -ForegroundColor Red
+        exit 1
+    }
+    
+    # Setup build environment
+    $env:PATH = "$mingwDir\bin;$qtDir\bin;" + [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
+    
+    Write-Host "[Build] Configuring CMake..." -ForegroundColor Yellow
+    if (-not (Test-Path $buildDir)) {
+        New-Item -ItemType Directory -Path $buildDir | Out-Null
+    }
+    
+    Push-Location $buildDir
+    try {
+        cmake .. -G "MinGW Makefiles" `
+            -DCMAKE_BUILD_TYPE=Release `
+            -DCMAKE_PREFIX_PATH="$qtDir" `
+            -DCMAKE_C_COMPILER="$mingwDir\bin\gcc.exe" `
+            -DCMAKE_CXX_COMPILER="$mingwDir\bin\g++.exe" `
+            -DCMAKE_MAKE_PROGRAM="$mingwDir\bin\mingw32-make.exe"
+        
+        if ($LASTEXITCODE -ne 0) {
+            throw "CMake configuration failed"
+        }
+        
+        Write-Host "[Build] Compiling..." -ForegroundColor Yellow
+        cmake --build . --config Release -j
+        if ($LASTEXITCODE -ne 0) {
+            throw "Build failed"
+        }
+        
+        Write-Host "[Build] Build complete" -ForegroundColor Green
+    } catch {
+        Write-Host "[ERROR] Build failed: $_" -ForegroundColor Red
+        Pop-Location
+        exit 1
+    }
+    Pop-Location
+}
+
+if (-not (Test-Path $exePath)) {
+    Write-Host "[ERROR] LogParser.exe still not found after build" -ForegroundColor Red
     exit 1
 }
 
@@ -53,25 +106,32 @@ New-Item -ItemType Directory -Path $deployDir | Out-Null
 Write-Host "      Copying LogParser.exe..." -ForegroundColor Gray
 Copy-Item $exePath $deployDir
 
-# Copy Qt DLLs
-Write-Host "      Copying Qt DLLs..." -ForegroundColor Gray
+# Use windeployqt to collect Qt runtime and plugins
+Write-Host "      Running windeployqt..." -ForegroundColor Gray
+& $windeployqt --release --no-translations "$deployDir\LogParser.exe"
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "      [WARNING] windeployqt returned code $LASTEXITCODE, continue with manual fallback" -ForegroundColor Yellow
+}
+
+# Manual fallback for complete Qt DLLs set
+Write-Host "      Copying fallback Qt DLLs..." -ForegroundColor Gray
 $qtDlls = @(
     "Qt6Core.dll",
     "Qt6Gui.dll",
     "Qt6Widgets.dll",
     "Qt6Charts.dll",
     "Qt6Qml.dll",
-    "Qt6Network.dll",
+    "Qt6QmlModels.dll",
     "Qt6OpenGL.dll",
-    "Qt6OpenGLWidgets.dll"
+    "Qt6OpenGLWidgets.dll",
+    "Qt6Network.dll",
+    "Qt6Sql.dll",
+    "Qt6Concurrent.dll"
 )
-
 foreach ($dll in $qtDlls) {
     $source = Join-Path $qtDir "bin\$dll"
-    if (Test-Path $source) {
-        Copy-Item $source $deployDir
-    } else {
-        Write-Host "      [WARNING] $dll not found" -ForegroundColor Yellow
+    if ((Test-Path $source) -and -not (Test-Path (Join-Path $deployDir $dll))) {
+        Copy-Item $source $deployDir -Force
     }
 }
 
@@ -90,18 +150,33 @@ foreach ($dll in $mingwDlls) {
     }
 }
 
-# Copy Qt plugins
-Write-Host "      Copying Qt plugins..." -ForegroundColor Gray
-
+# Ensure platform plugin exists (fallback)
+Write-Host "      Ensuring Qt platform plugin..." -ForegroundColor Gray
 $platformsDir = Join-Path $deployDir "platforms"
 New-Item -ItemType Directory -Path $platformsDir -Force | Out-Null
-Copy-Item (Join-Path $qtDir "plugins\platforms\qwindows.dll") $platformsDir
+$qwindows = Join-Path $qtDir "plugins\platforms\qwindows.dll"
+if ((Test-Path $qwindows) -and -not (Test-Path (Join-Path $platformsDir "qwindows.dll"))) {
+    Copy-Item $qwindows $platformsDir -Force
+}
 
-$stylesDir = Join-Path $deployDir "styles"
-New-Item -ItemType Directory -Path $stylesDir -Force | Out-Null
-$stylePlugin = Join-Path $qtDir "plugins\styles\qwindowsvistastyle.dll"
-if (Test-Path $stylePlugin) {
-    Copy-Item $stylePlugin $stylesDir
+# Copy QML plugins
+Write-Host "      Copying QML plugins..." -ForegroundColor Gray
+$qmlDir = Join-Path $qtDir "qml"
+if (Test-Path $qmlDir) {
+    $qmlDeployDir = Join-Path $deployDir "qml"
+    if (-not (Test-Path $qmlDeployDir)) {
+        New-Item -ItemType Directory -Path $qmlDeployDir | Out-Null
+    }
+    Copy-Item $qmlDir -Destination $qmlDeployDir -Recurse -Force -ErrorAction SilentlyContinue
+}
+
+# Copy image format plugins
+Write-Host "      Copying image format plugins..." -ForegroundColor Gray
+$imageFormatsDir = Join-Path $qtDir "plugins\imageformats"
+if (Test-Path $imageFormatsDir) {
+    $imgDeployDir = Join-Path $deployDir "imageformats"
+    New-Item -ItemType Directory -Path $imgDeployDir -Force | Out-Null
+    Copy-Item "$imageFormatsDir\*.dll" $imgDeployDir -Force -ErrorAction SilentlyContinue
 }
 
 Write-Host "      OK Deploy directory ready" -ForegroundColor Green

@@ -79,14 +79,64 @@ cmake .. -G "Visual Studio 16 2019"
 cmake --build . --config Release
 ```
 
-### Windows (使用MinGW)
+### Windows (使用MinGW) - 推荐方式 ⭐
+
+#### 快速打包（一键生成安装程序）
+
+只需一行命令即可完成从源码到可分发安装包的全过程：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\package.ps1
+```
+
+或在 PowerShell 中直接运行：
+
+```powershell
+.\package.ps1
+```
+
+**脚本会自动执行以下步骤：**
+1. ✅ 检测并编译项目（如未构建则自动编译）
+2. ✅ 收集所有依赖库（Qt DLL、MinGW运行时库）
+3. ✅ 配置 Qt 插件和资源
+4. ✅ 使用 NSIS 生成 Windows 安装程序
+5. ✅ 生成安装包：`LogParser_Setup.exe`
+
+**前置要求：**
+- Qt 6.5.3 MinGW 版本（安装在 `C:\Qt\6.5.3\mingw_64`）
+- MinGW 工具链（安装在 `C:\Qt\Tools\mingw1120_64`）
+- CMake 3.16+
+- NSIS（Nullsoft Scriptable Install System）
+
+**其他选项：**
+
+```powershell
+# 清理构建和安装包
+.\package.ps1 -Clean
+
+# 重新打包（保留已编译的二进制）
+.\package.ps1
+```
+
+#### 手动构建（如果不需要打包）
 
 ```batch
-mkdir build
-cd build
-cmake .. -G "MinGW Makefiles"
-mingw32-make
+mkdir build-mingw
+cd build-mingw
+cmake .. -G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="C:\Qt\6.5.3\mingw_64"
+cmake --build . --config Release -j
+cd ..
+build-mingw\LogParser.exe
 ```
+
+#### Windows 安装程序使用
+
+安装包 `LogParser_Setup.exe` 支持以下功能：
+- 安装到自定义位置（默认 `C:\Program Files\LogParser`）
+- 创建桌面快捷方式
+- 创建开始菜单快捷方式
+- 完全卸载功能（通过控制面板）
+- 以管理员身份运行
 
 ## 使用说明
 
