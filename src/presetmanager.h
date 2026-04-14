@@ -51,6 +51,7 @@ struct PlotPreset
     
     // 视图设置
     bool multiAxisMode = false;     // 多Y轴模式
+    bool showZeroLine = false;      // 是否显示 y=0 基准线
     double xMin = 0.0;              // X轴范围
     double xMax = 1.0;
     double yMin = 0.0;              // Y轴范围（单Y轴模式）
@@ -73,6 +74,7 @@ struct PlotPreset
         
         // 保存视图设置
         obj["multiAxisMode"] = multiAxisMode;
+        obj["showZeroLine"] = showZeroLine;
         if (hasViewState) {
             QJsonObject viewState;
             viewState["xMin"] = xMin;
@@ -106,6 +108,7 @@ struct PlotPreset
         
         // 加载视图设置
         preset.multiAxisMode = obj["multiAxisMode"].toBool(false);
+        preset.showZeroLine = obj["showZeroLine"].toBool(false);
         if (obj.contains("viewState")) {
             QJsonObject viewState = obj["viewState"].toObject();
             preset.hasViewState = true;

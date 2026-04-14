@@ -7,6 +7,7 @@
 #include <QDialogButtonBox>
 #include <QScrollArea>
 #include <QGridLayout>
+#include <QFontMetrics>
 #include <cmath>
 #include <limits>
 
@@ -16,6 +17,33 @@ QT_USE_NAMESPACE
 QT_CHARTS_USE_NAMESPACE
 #endif
 
+namespace {
+bool supportsEmojiGlyph(const QFont &font, char32_t codepoint)
+{
+    QFontMetrics fm(font);
+    return fm.inFontUcs4(static_cast<uint>(codepoint));
+}
+
+QFont emojiPreferredFont(const QFont &base)
+{
+    QFont f(base);
+    QStringList families;
+    families << "Noto Color Emoji" << base.family();
+    f.setFamilies(families);
+    return f;
+}
+
+bool hasVisibleMarkerLines(const QList<SeriesMarkerInfo> &infos)
+{
+    for (const SeriesMarkerInfo &info : infos) {
+        if (info.showYMin || info.showYMax || info.showXMin || info.showXMax) {
+            return true;
+        }
+    }
+    return false;
+}
+}
+
 // ==================== ChartWidget ====================
 
 ChartWidget::ChartWidget(QWidget *parent)
@@ -24,6 +52,8 @@ ChartWidget::ChartWidget(QWidget *parent)
     , m_originalXMin(0), m_originalXMax(1)
     , m_originalYMin(0), m_originalYMax(1)
     , m_multiAxisMode(false)
+    , m_showZeroLine(false)
+    , m_zeroLine(nullptr)
 {
     m_layout = new QVBoxLayout(this);
     m_layout->setContentsMargins(0, 0, 0, 0);
@@ -44,6 +74,18 @@ ChartWidget::ChartWidget(QWidget *parent)
     m_axisY = new QValueAxis();
     m_chart->addAxis(m_axisX, Qt::AlignBottom);
     m_chart->addAxis(m_axisY, Qt::AlignLeft);
+
+    // 轴范围变化时刷新标记线，避免缩放/平移后标记线位置过期
+    connect(m_axisX, &QValueAxis::rangeChanged, this, [this](qreal, qreal) {
+        if (m_showZeroLine || hasVisibleMarkerLines(m_markerInfos)) {
+            updateMarkerLines();
+        }
+    });
+    connect(m_axisY, &QValueAxis::rangeChanged, this, [this](qreal, qreal) {
+        if (m_showZeroLine || hasVisibleMarkerLines(m_markerInfos)) {
+            updateMarkerLines();
+        }
+    });
     
     // 创建交互式图表视图
     m_chartView = new InteractiveChartView(m_chart, this);
@@ -67,14 +109,16 @@ void ChartWidget::setupToolbar()
     
     // 放大按钮
     m_zoomInBtn = new QToolButton();
-    m_zoomInBtn->setText("🔍+");
+    m_zoomInBtn->setFont(emojiPreferredFont(m_zoomInBtn->font()));
+    m_zoomInBtn->setText(supportsEmojiGlyph(m_zoomInBtn->font(), U'🔍') ? "🔍+" : "放+");
     m_zoomInBtn->setToolTip("整体放大 (X和Y轴)");
     m_zoomInBtn->setFixedSize(32, 28);
     connect(m_zoomInBtn, &QToolButton::clicked, this, &ChartWidget::zoomIn);
     
     // 缩小按钮
     m_zoomOutBtn = new QToolButton();
-    m_zoomOutBtn->setText("🔍-");
+    m_zoomOutBtn->setFont(emojiPreferredFont(m_zoomOutBtn->font()));
+    m_zoomOutBtn->setText(supportsEmojiGlyph(m_zoomOutBtn->font(), U'🔍') ? "🔍-" : "缩-");
     m_zoomOutBtn->setToolTip("整体缩小 (X和Y轴)");
     m_zoomOutBtn->setFixedSize(32, 28);
     connect(m_zoomOutBtn, &QToolButton::clicked, this, &ChartWidget::zoomOut);
@@ -174,6 +218,13 @@ void ChartWidget::setupToolbar()
         }
     });
     toolLayout->addWidget(m_multiAxisCheckBox);
+
+    // Y=0 基准线复选框
+    m_zeroLineCheckBox = new QCheckBox("Y=0基准线");
+    m_zeroLineCheckBox->setToolTip("显示/隐藏 y=0 水平基准线");
+    m_zeroLineCheckBox->setChecked(m_showZeroLine);
+    connect(m_zeroLineCheckBox, &QCheckBox::toggled, this, &ChartWidget::setZeroLineVisible);
+    toolLayout->addWidget(m_zeroLineCheckBox);
     
     // 分隔符
     QFrame *separator2 = new QFrame();
@@ -183,7 +234,8 @@ void ChartWidget::setupToolbar()
     
     // 标记按钮
     m_markerBtn = new QToolButton();
-    m_markerBtn->setText("📏");
+    m_markerBtn->setFont(emojiPreferredFont(m_markerBtn->font()));
+    m_markerBtn->setText(supportsEmojiGlyph(m_markerBtn->font(), U'📏') ? "📏" : "标");
     m_markerBtn->setToolTip("显示/隐藏曲线标记线 (Y最大/最小值, X起止值)");
     m_markerBtn->setFixedSize(32, 28);
     connect(m_markerBtn, &QToolButton::clicked, this, &ChartWidget::showMarkerSettings);
@@ -543,6 +595,17 @@ void ChartWidget::setMultiAxisMode(bool enabled)
     m_multiAxisCheckBox->setChecked(enabled);
 }
 
+void ChartWidget::setZeroLineVisible(bool visible)
+{
+    m_showZeroLine = visible;
+    if (m_zeroLineCheckBox && m_zeroLineCheckBox->isChecked() != visible) {
+        m_zeroLineCheckBox->blockSignals(true);
+        m_zeroLineCheckBox->setChecked(visible);
+        m_zeroLineCheckBox->blockSignals(false);
+    }
+    updateMarkerLines();
+}
+
 void ChartWidget::getViewRange(double &xMin, double &xMax, double &yMin, double &yMax) const
 {
     xMin = m_axisX->min();
@@ -762,6 +825,11 @@ void ChartWidget::showMarkerSettings()
 
 void ChartWidget::clearMarkerLines()
 {
+    if (m_zeroLine) {
+        m_chart->removeSeries(m_zeroLine);
+        m_zeroLine = nullptr;
+    }
+
     for (SeriesMarkerInfo &info : m_markerInfos) {
         if (info.yMinLine) {
             m_chart->removeSeries(info.yMinLine);
@@ -786,12 +854,38 @@ void ChartWidget::updateMarkerLines()
 {
     // 先清除现有标记线
     clearMarkerLines();
+
+    if (m_chart->series().isEmpty()) {
+        return;
+    }
     
     // 获取当前坐标轴范围用于绘制延伸线
     double axisXMin = m_axisX->min();
     double axisXMax = m_axisX->max();
     double axisYMin = m_axisY->min();
     double axisYMax = m_axisY->max();
+
+    // Y=0 基准线
+    if (m_showZeroLine) {
+        m_zeroLine = new QLineSeries();
+        m_zeroLine->setName("Y=0 基准线");
+        m_zeroLine->append(axisXMin, 0.0);
+        m_zeroLine->append(axisXMax, 0.0);
+
+        QPen zeroPen(QColor(120, 120, 120));
+        zeroPen.setStyle(Qt::DashLine);
+        zeroPen.setWidth(2);
+        m_zeroLine->setPen(zeroPen);
+
+        m_chart->addSeries(m_zeroLine);
+        m_zeroLine->attachAxis(m_axisX);
+        m_zeroLine->attachAxis(m_axisY);
+
+        auto markers = m_chart->legend()->markers(m_zeroLine);
+        if (!markers.isEmpty()) {
+            markers.first()->setVisible(false);
+        }
+    }
     
     for (SeriesMarkerInfo &info : m_markerInfos) {
         QColor lighterColor = info.color.lighter(120);

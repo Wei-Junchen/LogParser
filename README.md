@@ -24,6 +24,33 @@
 
 - Qt Widgets
 - Qt Charts
+- Qt QML
+
+## 环境配置
+
+### Ubuntu / Debian（推荐 Qt 6）
+
+> 注意：在 Ubuntu 上，Qt Charts 的开发包名通常是 `libqt6charts6-dev`，不是 `qt6-charts-dev`。
+
+```bash
+# 1) 安装基础工具
+sudo apt update
+sudo apt install -y build-essential cmake
+
+# 2) 安装 Qt6 依赖（本项目需要 Widgets + Charts + Qml）
+sudo apt install -y qt6-base-dev qt6-declarative-dev libqt6charts6-dev
+
+# 3) 验证依赖是否就绪（可选）
+apt-cache policy qt6-base-dev qt6-declarative-dev libqt6charts6-dev
+```
+
+如果提示找不到上述包，先启用 `universe` 源再安装：
+
+```bash
+sudo add-apt-repository universe
+sudo apt update
+sudo apt install -y qt6-base-dev qt6-declarative-dev libqt6charts6-dev
+```
 
 ## 编译指南
 

@@ -1,5 +1,29 @@
 #include "canvaspanel.h"
 #include <QSplitter>
+#include <QFontMetrics>
+
+namespace {
+bool supportsEmojiGlyph(const QFont &font, char32_t codepoint)
+{
+    QFontMetrics fm(font);
+    return fm.inFontUcs4(static_cast<uint>(codepoint));
+}
+
+QFont emojiPreferredFont(const QFont &base)
+{
+    QFont f(base);
+    QStringList families;
+    families << "Noto Color Emoji" << base.family();
+    f.setFamilies(families);
+    return f;
+}
+
+QString computedColumnPrefix(const QFont &font)
+{
+    QFont preferred = emojiPreferredFont(font);
+    return supportsEmojiGlyph(preferred, U'📊') ? "📊 " : "[计算] ";
+}
+}
 
 CanvasPanel::CanvasPanel(CsvParser *parser, ScriptEngine *scriptEngine, QWidget *parent)
     : QWidget(parent)
@@ -26,6 +50,7 @@ CanvasPanel::CanvasPanel(CsvParser *parser, ScriptEngine *scriptEngine, QWidget 
     m_columnLayout->addWidget(xAxisLabel);
     
     m_xAxisComboBox = new QComboBox();
+    m_xAxisComboBox->setFont(emojiPreferredFont(m_xAxisComboBox->font()));
     m_xAxisComboBox->addItem("行索引", -1);
     connect(m_xAxisComboBox, QOverload<int>::of(&QComboBox::currentIndexChanged),
             this, &CanvasPanel::onXAxisChanged);
@@ -36,6 +61,7 @@ CanvasPanel::CanvasPanel(CsvParser *parser, ScriptEngine *scriptEngine, QWidget 
     m_columnLayout->addWidget(yAxisLabel);
     
     m_columnListWidget = new QListWidget();
+    m_columnListWidget->setFont(emojiPreferredFont(m_columnListWidget->font()));
     m_columnListWidget->setSelectionMode(QAbstractItemView::NoSelection);
     connect(m_columnListWidget, &QListWidget::itemClicked,
             this, &CanvasPanel::onColumnItemClicked);
@@ -132,8 +158,9 @@ void CanvasPanel::refreshColumnList()
     }
     
     // 添加计算列到列表和X轴下拉框
+    const QString computedPrefix = computedColumnPrefix(font());
     for (auto it = m_computedColumns.constBegin(); it != m_computedColumns.constEnd(); ++it) {
-        QListWidgetItem *item = new QListWidgetItem("📊 " + it.key());
+        QListWidgetItem *item = new QListWidgetItem(computedPrefix + it.key());
         item->setData(Qt::UserRole, -1);  // 计算列使用-1作为索引
         item->setData(Qt::UserRole + 1, true);  // 标记为计算列
         item->setData(Qt::UserRole + 2, it.key());  // 存储计算列名称
@@ -150,7 +177,7 @@ void CanvasPanel::refreshColumnList()
         m_columnListWidget->addItem(item);
         
         // 添加计算列到X轴下拉框
-        m_xAxisComboBox->addItem("📊 " + it.key(), QVariant::fromValue(QString("computed:" + it.key())));
+        m_xAxisComboBox->addItem(computedPrefix + it.key(), QVariant::fromValue(QString("computed:" + it.key())));
     }
     
     // 恢复X轴选择
@@ -465,6 +492,7 @@ PlotPreset CanvasPanel::getPreset() const
     
     // 保存多Y轴模式
     preset.multiAxisMode = m_chart->isMultiAxisMode();
+    preset.showZeroLine = m_chart->isZeroLineVisible();
     
     // 保存视图状态
     if (!m_selectedColumns.isEmpty() || !m_selectedComputedColumns.isEmpty()) {
@@ -555,6 +583,7 @@ void CanvasPanel::applyPreset(const PlotPreset &preset)
     
     // 恢复多Y轴模式（在更新图表之前设置）
     m_chart->setMultiAxisMode(preset.multiAxisMode);
+    m_chart->setZeroLineVisible(preset.showZeroLine);
     
     // 更新图表
     updateChart();

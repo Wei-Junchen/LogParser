@@ -116,6 +116,12 @@ public:
      */
     bool isMultiAxisMode() const { return m_multiAxisMode; }
     void setMultiAxisMode(bool enabled);
+
+    /**
+     * @brief 获取/设置是否显示 Y=0 基准线
+     */
+    bool isZeroLineVisible() const { return m_showZeroLine; }
+    void setZeroLineVisible(bool visible);
     
     /**
      * @brief 获取当前视图范围
@@ -170,6 +176,7 @@ private:
     QToolButton *m_zoomOutYBtn;  // Y轴缩小
     QToolButton *m_markerBtn;
     QCheckBox *m_multiAxisCheckBox;  // 多Y轴模式开关
+    QCheckBox *m_zeroLineCheckBox;   // Y=0 基准线开关
     
     int m_seriesCount;
     
@@ -185,6 +192,10 @@ private:
     
     // 曲线标记信息
     QList<SeriesMarkerInfo> m_markerInfos;
+
+    // Y=0 基准线
+    bool m_showZeroLine;
+    QLineSeries *m_zeroLine;
 };
 
 /**
